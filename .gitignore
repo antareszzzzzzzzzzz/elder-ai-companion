@@ -1,0 +1,43 @@
+# ===== 環境變數（含密鑰，絕對不能上傳） =====
+.env
+.env.local
+.env.production
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+venv/
+.venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# ===== Node.js =====
+node_modules/
+dist/
+.cache/
+
+# ===== 日誌 =====
+*.log
+backend/logs/
+
+# ===== IDE =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ===== OS =====
+.DS_Store
+Desktop.ini
+ehthumbs.db
+
+# ===== 建置產物 =====
+frontend/dist/
+*.map
