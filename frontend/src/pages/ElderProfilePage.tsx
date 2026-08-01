@@ -51,7 +51,11 @@ const PendingFollowRequests: React.FC = () => {
   const [requests, setRequests] = useState<any[]>([]);
   const [loadingId, setLoadingId] = useState<string | null>(null);
 
-  useEffect(() => { loadRequests(); }, []);
+  useEffect(() => {
+    loadRequests();
+    const interval = setInterval(loadRequests, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const loadRequests = async () => {
     try {
@@ -116,7 +120,11 @@ const MyFollowers: React.FC = () => {
   const [followers, setFollowers] = useState<any[]>([]);
   const [removeLoadingId, setRemoveLoadingId] = useState<string | null>(null);
 
-  useEffect(() => { loadFollowers(); }, []);
+  useEffect(() => {
+    loadFollowers();
+    const interval = setInterval(loadFollowers, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const loadFollowers = async () => {
     try {
