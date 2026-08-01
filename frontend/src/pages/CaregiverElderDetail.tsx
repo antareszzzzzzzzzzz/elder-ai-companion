@@ -1,9 +1,215 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useMockData } from '../store/MockDataContext';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, User, MessageSquare, BellRing, Trash2, Plus, Brain, Utensils, Pill, Activity, HeartPulse, Loader2, RefreshCw, Lightbulb, Clock } from 'lucide-react';
+import { ArrowLeft, User, MessageSquare, BellRing, Trash2, Plus, Brain, Utensils, Pill, Activity, HeartPulse, Loader2, RefreshCw, Lightbulb, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { healthApi, summaryApi, careItemsApi, followApi, type DailySummary, type HealthOverview, type CareItem } from '../services/api';
+
+/** 照護者端記憶足跡時間軸子組件 */
+interface CaregiverMemoryCard {
+  id: string;
+  type: string;
+  title: string;
+  content: string;
+  date: string;
+}
+
+interface CaregiverDayNode {
+  date: string;
+  label: string;
+  weekday: string;
+  events: CaregiverMemoryCard[];
+}
+
+function groupCardsByDate(cards: CaregiverMemoryCard[]): CaregiverDayNode[] {
+  const map = new Map<string, CaregiverMemoryCard[]>();
+  for (const card of cards) {
+    const date = card.date || '未知日期';
+    if (!map.has(date)) map.set(date, []);
+    map.get(date)!.push(card);
+  }
+  const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+  const nodes: CaregiverDayNode[] = [];
+  for (const [date, events] of map.entries()) {
+    const d = new Date(date);
+    const label = isNaN(d.getTime()) ? date : `${d.getMonth() + 1}/${d.getDate()}`;
+    const weekday = isNaN(d.getTime()) ? '' : `週${weekdays[d.getDay()]}`;
+    nodes.push({ date, label, weekday, events });
+  }
+  nodes.sort((a, b) => b.date.localeCompare(a.date));
+  return nodes;
+}
+
+function getCaregiverCategoryLabel(type: string): string {
+  switch (type) {
+    case 'diet': return '飲食';
+    case 'medication': return '用藥';
+    case 'activity': return '活動';
+    case 'mood': return '情緒';
+    default: return '健康';
+  }
+}
+
+const CaregiverMemoryTimeline: React.FC<{
+  memoryCards: CaregiverMemoryCard[];
+  getIconForType: (type: string) => React.ReactNode;
+  getBgForType: (type: string) => string;
+}> = ({ memoryCards, getIconForType, getBgForType }) => {
+  const dayNodes = groupCardsByDate(memoryCards);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const timelineRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [startX, setStartX] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    setIsDragging(true);
+    setStartX(e.pageX - (timelineRef.current?.offsetLeft || 0));
+    setScrollLeft(timelineRef.current?.scrollLeft || 0);
+  }, []);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isDragging) return;
+    e.preventDefault();
+    const x = e.pageX - (timelineRef.current?.offsetLeft || 0);
+    const walk = (x - startX) * 1.5;
+    if (timelineRef.current) timelineRef.current.scrollLeft = scrollLeft - walk;
+  }, [isDragging, startX, scrollLeft]);
+
+  const handleMouseUp = useCallback(() => { setIsDragging(false); }, []);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    setIsDragging(true);
+    setStartX(e.touches[0].pageX - (timelineRef.current?.offsetLeft || 0));
+    setScrollLeft(timelineRef.current?.scrollLeft || 0);
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!isDragging) return;
+    const x = e.touches[0].pageX - (timelineRef.current?.offsetLeft || 0);
+    const walk = (x - startX) * 1.5;
+    if (timelineRef.current) timelineRef.current.scrollLeft = scrollLeft - walk;
+  }, [isDragging, startX, scrollLeft]);
+
+  const scrollTimeline = (direction: 'left' | 'right') => {
+    if (!timelineRef.current) return;
+    const scrollAmount = 200;
+    timelineRef.current.scrollBy({ left: direction === 'left' ? -scrollAmount : scrollAmount, behavior: 'smooth' });
+  };
+
+  const selectedDay = dayNodes[selectedIndex] || null;
+
+  if (dayNodes.length === 0) {
+    return (
+      <div className="py-12 text-center bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
+        <Brain className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+        <p className="text-slate-500 font-medium">目前還沒有記憶點滴紀錄</p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {/* 橫向時間軸 */}
+      <div className="relative mb-6">
+        <button onClick={() => scrollTimeline('left')}
+          className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 bg-white/90 border border-slate-200 rounded-full flex items-center justify-center shadow-sm hover:bg-teal-50 hover:border-teal-300 transition-colors">
+          <ChevronLeft className="w-4 h-4 text-slate-600" />
+        </button>
+        <button onClick={() => scrollTimeline('right')}
+          className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 bg-white/90 border border-slate-200 rounded-full flex items-center justify-center shadow-sm hover:bg-teal-50 hover:border-teal-300 transition-colors">
+          <ChevronRight className="w-4 h-4 text-slate-600" />
+        </button>
+
+        <div
+          ref={timelineRef}
+          className="overflow-x-auto scrollbar-hide mx-10 cursor-grab active:cursor-grabbing select-none"
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleMouseUp}
+        >
+          <div className="flex items-center min-w-max py-4 px-2">
+            <div className="absolute top-1/2 left-12 right-12 h-0.5 bg-gradient-to-r from-teal-200 via-teal-300 to-teal-200 -translate-y-1/2 pointer-events-none" />
+            {dayNodes.map((node, idx) => (
+              <div key={node.date} className="flex flex-col items-center mx-3 relative" style={{ minWidth: '80px' }}>
+                <button
+                  onClick={() => setSelectedIndex(idx)}
+                  className={`relative z-10 w-14 h-14 rounded-full flex flex-col items-center justify-center transition-all duration-200 border-2 ${
+                    idx === selectedIndex
+                      ? 'bg-teal-500 border-teal-600 text-white shadow-lg shadow-teal-200 scale-110'
+                      : 'bg-white border-slate-200 text-slate-600 hover:border-teal-300 hover:bg-teal-50'
+                  }`}
+                >
+                  <span className="text-xs font-bold leading-tight">{node.label}</span>
+                  <span className="text-[10px] leading-tight opacity-80">{node.weekday}</span>
+                </button>
+                <span className={`mt-1.5 text-xs font-semibold px-2 py-0.5 rounded-full ${
+                  idx === selectedIndex ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-500'
+                }`}>
+                  {node.events.length} 則
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* 選中日期的記憶點滴列表 */}
+      <AnimatePresence mode="wait">
+        {selectedDay && (
+          <motion.div
+            key={selectedDay.date}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+          >
+            <div className="flex items-center gap-3 mb-4 pb-3 border-b border-slate-100">
+              <div className="w-3 h-3 rounded-full bg-teal-500" />
+              <h4 className="text-lg font-bold text-slate-800">{selectedDay.date}</h4>
+              <span className="text-sm text-slate-500">{selectedDay.weekday}</span>
+              <span className="ml-auto text-sm text-slate-400">共 {selectedDay.events.length} 則記憶點滴</span>
+            </div>
+
+            <div className="max-h-[380px] overflow-y-auto space-y-3 pr-1 scrollbar-thin">
+              {selectedDay.events.map((card, eventIdx) => (
+                <motion.div
+                  key={card.id}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: eventIdx * 0.05 }}
+                  className={`flex items-start gap-4 p-4 rounded-xl border ${getBgForType(card.type)} transition-all hover:shadow-sm`}
+                >
+                  <div className="p-2 bg-white/70 rounded-lg shadow-sm flex-shrink-0">
+                    {getIconForType(card.type)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs font-semibold px-2 py-0.5 bg-white/60 rounded-full text-slate-600">
+                        {getCaregiverCategoryLabel(card.type)}
+                      </span>
+                    </div>
+                    <p className="text-base text-slate-700 leading-relaxed">{card.content}</p>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+
+            {selectedDay.events.length > 5 && (
+              <p className="text-center text-sm text-slate-400 mt-3 pt-2 border-t border-slate-100">
+                ↑ 向上滑動查看更多記憶點滴
+              </p>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
+  );
+};
 
 const CaregiverElderDetail: React.FC = () => {
   const { followingElders } = useMockData();
@@ -126,6 +332,13 @@ const CaregiverElderDetail: React.FC = () => {
       setGeneratingInsights(false);
     }
   };
+
+  // 跨日洞察的觸發按鈕目前被註解停用，但 state 與 handler 保留以便日後恢復。
+  // 這裡明確標記為「刻意未使用」，避免 tsc 的 noUnusedLocals 讓 build 失敗。
+  // 恢復按鈕後可直接刪掉這三行。
+  void RefreshCw;
+  void generatingInsights;
+  void handleGenerateInsights;
 
   const handleGenerateSummary = async () => {
     if (!accountId) return;
@@ -334,10 +547,10 @@ const CaregiverElderDetail: React.FC = () => {
                   )}
                 </div>
 
-                {/* 記憶卡片 */}
+                {/* 記憶足跡時間軸 */}
                 <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100">
                   <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-                    <Brain className="w-6 h-6 text-teal-500" /> 記憶卡片總覽
+                    <Clock className="w-6 h-6 text-teal-500" /> 記憶足跡總覽
                   </h3>
                   {loadingOverview ? (
                     <div className="flex items-center justify-center py-8">
@@ -345,21 +558,11 @@ const CaregiverElderDetail: React.FC = () => {
                       <span className="ml-2 text-slate-500">載入中...</span>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                      {memoryCards.map((card) => (
-                        <div key={card.id} className={`p-5 rounded-2xl border ${getBgForType(card.type)}`}>
-                          <div className="flex items-center gap-2 mb-2">
-                            {getIconForType(card.type)}
-                            <h4 className="font-bold text-slate-800">{card.title}</h4>
-                          </div>
-                          <p className="text-slate-700">{card.content}</p>
-                          <p className="text-right text-xs text-slate-500 mt-2 font-medium">{card.date}</p>
-                        </div>
-                      ))}
-                      {memoryCards.length === 0 && (
-                        <p className="col-span-2 text-slate-400 text-center py-6">尚無記憶卡片紀錄</p>
-                      )}
-                    </div>
+                    <CaregiverMemoryTimeline
+                      memoryCards={memoryCards}
+                      getIconForType={getIconForType}
+                      getBgForType={getBgForType}
+                    />
                   )}
                 </div>
               </div>
@@ -487,6 +690,7 @@ const CaregiverElderDetail: React.FC = () => {
                     {generatingWeekly ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
                     {generatingWeekly ? '生成中...' : '產生本週總結'}
                   </button>
+                  {/* 暫時隱藏「更新跨日洞察」按鈕，之後可能恢復
                   <button
                     onClick={handleGenerateInsights}
                     disabled={generatingInsights}
@@ -495,6 +699,7 @@ const CaregiverElderDetail: React.FC = () => {
                     {generatingInsights ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
                     {generatingInsights ? '分析中...' : '更新跨日洞察'}
                   </button>
+                  */}
                 </div>
 
                 {/* 摘要區塊 */}
@@ -667,12 +872,17 @@ const CaregiverElderDetail: React.FC = () => {
                       </div>
                     )}
 
-                    {/* 已完成的提醒（track=false） */}
+                    {/* 已完成的提醒（track=false），最多顯示 10 項 */}
                     {careItems.filter((r) => !r.track).length > 0 && (
                       <div className="mb-4">
-                        <h4 className="font-bold text-slate-400 mb-4 text-lg">已完成 / 已停止提醒</h4>
+                        <h4 className="font-bold text-slate-400 mb-4 text-lg">
+                          已完成 / 已停止提醒
+                          {careItems.filter((r) => !r.track).length > 10 && (
+                            <span className="text-sm font-normal ml-2">（顯示最新 10 項，共 {careItems.filter((r) => !r.track).length} 項）</span>
+                          )}
+                        </h4>
                         <div className="space-y-3">
-                          {careItems.filter((r) => !r.track).map((item) => (
+                          {careItems.filter((r) => !r.track).slice(0, 10).map((item) => (
                             <div key={item.fact_id} className="flex items-center justify-between p-4 rounded-xl border-2 border-slate-100 bg-slate-50 opacity-60 transition-all">
                               <div className="flex items-center gap-3 flex-1">
                                 <span className="text-lg font-semibold text-slate-500 line-through">{item.content}</span>
