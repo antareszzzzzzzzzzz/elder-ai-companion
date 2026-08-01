@@ -163,7 +163,6 @@ export const summaryApi = {
 export const followApi = {
   getMyFollowing: () => api.get<any[]>('/api/follow/my-following'),
   getMyFollowers: () => api.get<any[]>('/api/follow/my-followers'),
-  getMyPendingSent: () => api.get<any[]>('/api/follow/my-pending-sent'),
   getPendingRequests: () => api.get<any[]>('/api/follow/pending-requests'),
   approve: (followId: string) => api.post('/api/follow/approve', { follow_id: followId }),
   reject: (followId: string) => api.post('/api/follow/reject', { follow_id: followId }),
