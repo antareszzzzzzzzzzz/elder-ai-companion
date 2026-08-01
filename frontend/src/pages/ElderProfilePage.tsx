@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useMockData } from '../store/MockDataContext';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Edit3, Save, Activity, Utensils, Pill, Brain, HeartPulse, User as UserIcon, RefreshCw, Key, Loader2, Plus, Trash2, FileText } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { ArrowLeft, Edit3, Save, Activity, Utensils, Pill, Brain, HeartPulse, User as UserIcon, RefreshCw, Key, Loader2, Plus, Trash2, FileText, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { profileApi, healthApi, api, type Fact, followApi } from '../services/api';
 import type { MemoryCard } from '../store/MockDataContext';
 
@@ -166,6 +166,275 @@ const MyFollowers: React.FC = () => {
           </div>
         ))}
       </div>
+    </motion.section>
+  );
+};
+
+/** 記憶足跡時間軸子組件 */
+interface MemoryTimelineProps {
+  memoryCards: MemoryCard[];
+  loading: boolean;
+  personalNotes: string;
+  setPersonalNotes: (v: string) => void;
+  editingNotes: boolean;
+  setEditingNotes: (v: boolean) => void;
+  savingNotes: boolean;
+  handleSaveNotes: () => void;
+  getIconForType: (type: string) => React.ReactNode;
+  getBgForType: (type: string) => string;
+}
+
+interface DayNode {
+  date: string; // YYYY-MM-DD
+  label: string; // MM/DD
+  weekday: string;
+  events: MemoryCard[];
+}
+
+function groupByDate(cards: MemoryCard[]): DayNode[] {
+  const map = new Map<string, MemoryCard[]>();
+  for (const card of cards) {
+    const date = card.date || '未知日期';
+    if (!map.has(date)) map.set(date, []);
+    map.get(date)!.push(card);
+  }
+  const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+  const nodes: DayNode[] = [];
+  for (const [date, events] of map.entries()) {
+    const d = new Date(date);
+    const label = isNaN(d.getTime()) ? date : `${d.getMonth() + 1}/${d.getDate()}`;
+    const weekday = isNaN(d.getTime()) ? '' : `週${weekdays[d.getDay()]}`;
+    nodes.push({ date, label, weekday, events });
+  }
+  // 按日期倒序（最新在左）
+  nodes.sort((a, b) => b.date.localeCompare(a.date));
+  return nodes;
+}
+
+function getCategoryLabel(type: string): string {
+  switch (type) {
+    case 'diet': return '飲食';
+    case 'medication': return '用藥';
+    case 'activity': return '活動';
+    case 'mood': return '情緒';
+    default: return '健康';
+  }
+}
+
+const MemoryTimeline: React.FC<MemoryTimelineProps> = ({
+  memoryCards, loading, personalNotes, setPersonalNotes,
+  editingNotes, setEditingNotes, savingNotes, handleSaveNotes,
+  getIconForType, getBgForType,
+}) => {
+  const dayNodes = groupByDate(memoryCards);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const timelineRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [startX, setStartX] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
+
+  // 拖拽時間軸
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    setIsDragging(true);
+    setStartX(e.pageX - (timelineRef.current?.offsetLeft || 0));
+    setScrollLeft(timelineRef.current?.scrollLeft || 0);
+  }, []);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isDragging) return;
+    e.preventDefault();
+    const x = e.pageX - (timelineRef.current?.offsetLeft || 0);
+    const walk = (x - startX) * 1.5;
+    if (timelineRef.current) timelineRef.current.scrollLeft = scrollLeft - walk;
+  }, [isDragging, startX, scrollLeft]);
+
+  const handleMouseUp = useCallback(() => { setIsDragging(false); }, []);
+
+  // Touch 支援
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    setIsDragging(true);
+    setStartX(e.touches[0].pageX - (timelineRef.current?.offsetLeft || 0));
+    setScrollLeft(timelineRef.current?.scrollLeft || 0);
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!isDragging) return;
+    const x = e.touches[0].pageX - (timelineRef.current?.offsetLeft || 0);
+    const walk = (x - startX) * 1.5;
+    if (timelineRef.current) timelineRef.current.scrollLeft = scrollLeft - walk;
+  }, [isDragging, startX, scrollLeft]);
+
+  const scrollTimeline = (direction: 'left' | 'right') => {
+    if (!timelineRef.current) return;
+    const scrollAmount = 200;
+    timelineRef.current.scrollBy({ left: direction === 'left' ? -scrollAmount : scrollAmount, behavior: 'smooth' });
+  };
+
+  const selectedDay = dayNodes[selectedIndex] || null;
+
+  return (
+    <motion.section initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+      className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100">
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
+          <Clock className="w-7 h-7 text-emerald-500" /> 記憶足跡
+        </h2>
+        <p className="text-slate-500 mt-2">您與小安互動留下的記憶點滴，按日期排列。</p>
+      </div>
+
+      {/* 個人備註區 */}
+      <div className="mb-6">
+        {personalNotes.trim() && !editingNotes ? (
+          <div className="p-4 rounded-2xl border border-sky-200 bg-sky-50/60 cursor-pointer hover:bg-sky-50 transition-colors"
+            onClick={() => setEditingNotes(true)}>
+            <div className="flex items-center gap-2 mb-2">
+              <FileText className="w-5 h-5 text-sky-500" />
+              <span className="font-bold text-slate-700">我的備註</span>
+              <span className="text-xs bg-sky-100 text-sky-600 px-2 py-0.5 rounded-full">手動填寫・小安會參考</span>
+            </div>
+            <p className="text-base text-slate-700 leading-relaxed whitespace-pre-wrap">{personalNotes}</p>
+          </div>
+        ) : (editingNotes || !personalNotes.trim()) ? (
+          <div className="p-4 rounded-2xl border-2 border-dashed border-sky-300 bg-sky-50/50">
+            <div className="flex items-center gap-2 mb-3">
+              <FileText className="w-5 h-5 text-sky-500" />
+              <span className="font-bold text-slate-700">我的備註</span>
+              <span className="text-xs bg-sky-100 text-sky-600 px-2 py-0.5 rounded-full">手動填寫・小安會參考</span>
+            </div>
+            <textarea value={personalNotes} onChange={e => setPersonalNotes(e.target.value)} rows={3}
+              placeholder="寫下想讓小安知道的事，例如：我對海鮮過敏、每週三要去復健..."
+              className="w-full border border-sky-300 rounded-xl px-3 py-2 text-base focus:outline-none focus:border-sky-500 resize-none" />
+            <div className="flex justify-end gap-2 mt-2">
+              {editingNotes && <button onClick={() => setEditingNotes(false)} className="px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700">取消</button>}
+              <button onClick={handleSaveNotes} disabled={savingNotes}
+                className="px-4 py-1.5 bg-sky-500 hover:bg-sky-600 disabled:bg-sky-300 text-white text-sm rounded-lg font-bold flex items-center gap-1">
+                <Save className="w-4 h-4" />{savingNotes ? '儲存中...' : '儲存'}
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 text-emerald-500 animate-spin" />
+          <span className="ml-3 text-slate-500">載入中...</span>
+        </div>
+      ) : dayNodes.length === 0 ? (
+        <div className="py-12 text-center bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
+          <Brain className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+          <p className="text-slate-500 font-medium">目前還沒有記憶點滴，多跟小安聊天就會產生喔！</p>
+        </div>
+      ) : (
+        <>
+          {/* ===== 橫向時間軸 ===== */}
+          <div className="relative mb-6">
+            {/* 左箭頭 */}
+            <button onClick={() => scrollTimeline('left')}
+              className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 bg-white/90 border border-slate-200 rounded-full flex items-center justify-center shadow-sm hover:bg-emerald-50 hover:border-emerald-300 transition-colors">
+              <ChevronLeft className="w-4 h-4 text-slate-600" />
+            </button>
+            {/* 右箭頭 */}
+            <button onClick={() => scrollTimeline('right')}
+              className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 bg-white/90 border border-slate-200 rounded-full flex items-center justify-center shadow-sm hover:bg-emerald-50 hover:border-emerald-300 transition-colors">
+              <ChevronRight className="w-4 h-4 text-slate-600" />
+            </button>
+
+            {/* 時間軸本體 */}
+            <div
+              ref={timelineRef}
+              className="overflow-x-auto scrollbar-hide mx-10 cursor-grab active:cursor-grabbing select-none"
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleMouseUp}
+            >
+              <div className="flex items-center min-w-max py-4 px-2">
+                {/* 水平連接線 */}
+                <div className="absolute top-1/2 left-12 right-12 h-0.5 bg-gradient-to-r from-emerald-200 via-emerald-300 to-emerald-200 -translate-y-1/2 pointer-events-none" />
+
+                {dayNodes.map((node, idx) => (
+                  <div key={node.date} className="flex flex-col items-center mx-3 relative" style={{ minWidth: '80px' }}>
+                    {/* 節點 */}
+                    <button
+                      onClick={() => setSelectedIndex(idx)}
+                      className={`relative z-10 w-14 h-14 rounded-full flex flex-col items-center justify-center transition-all duration-200 border-2 ${
+                        idx === selectedIndex
+                          ? 'bg-emerald-500 border-emerald-600 text-white shadow-lg shadow-emerald-200 scale-110'
+                          : 'bg-white border-slate-200 text-slate-600 hover:border-emerald-300 hover:bg-emerald-50'
+                      }`}
+                    >
+                      <span className="text-xs font-bold leading-tight">{node.label}</span>
+                      <span className="text-[10px] leading-tight opacity-80">{node.weekday}</span>
+                    </button>
+                    {/* 事件數量指示器 */}
+                    <span className={`mt-1.5 text-xs font-semibold px-2 py-0.5 rounded-full ${
+                      idx === selectedIndex ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                    }`}>
+                      {node.events.length} 則
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* ===== 選中日期的記憶點滴列表 ===== */}
+          <AnimatePresence mode="wait">
+            {selectedDay && (
+              <motion.div
+                key={selectedDay.date}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+              >
+                <div className="flex items-center gap-3 mb-4 pb-3 border-b border-slate-100">
+                  <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                  <h3 className="text-lg font-bold text-slate-800">{selectedDay.date}</h3>
+                  <span className="text-sm text-slate-500">{selectedDay.weekday}</span>
+                  <span className="ml-auto text-sm text-slate-400">共 {selectedDay.events.length} 則記憶點滴</span>
+                </div>
+
+                <div className="max-h-[420px] overflow-y-auto space-y-3 pr-1 scrollbar-thin">
+                  {selectedDay.events.map((card, eventIdx) => (
+                    <motion.div
+                      key={card.id}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: eventIdx * 0.05 }}
+                      className={`flex items-start gap-4 p-4 rounded-xl border ${getBgForType(card.type)} transition-all hover:shadow-sm`}
+                    >
+                      {/* 左側圖標 */}
+                      <div className="p-2 bg-white/70 rounded-lg shadow-sm flex-shrink-0">
+                        {getIconForType(card.type)}
+                      </div>
+                      {/* 內容 */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-semibold px-2 py-0.5 bg-white/60 rounded-full text-slate-600">
+                            {getCategoryLabel(card.type)}
+                          </span>
+                        </div>
+                        <p className="text-base text-slate-700 leading-relaxed">{card.content}</p>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+
+                {selectedDay.events.length > 5 && (
+                  <p className="text-center text-sm text-slate-400 mt-3 pt-2 border-t border-slate-100">
+                    ↑ 向上滑動查看更多記憶點滴
+                  </p>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </>
+      )}
     </motion.section>
   );
 };
@@ -474,85 +743,19 @@ const ElderProfilePage: React.FC = () => {
         {/* ===== 我的追蹤者管理 ===== */}
         <MyFollowers />
 
-        {/* ===== 記憶卡片 ===== */}
-        <motion.section initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100">
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
-              <Brain className="w-7 h-7 text-emerald-500" /> 專屬記憶卡片
-            </h2>
-            <p className="text-slate-500 mt-2">根據您平常與小安的互動，AI 為您整理的重點摘要。</p>
-          </div>
-
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-8 h-8 text-emerald-500 animate-spin" />
-              <span className="ml-3 text-slate-500">載入中...</span>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {/* 手動填寫的個人備註卡片 */}
-              {personalNotes.trim() && !editingNotes && (
-                <motion.div whileHover={{ y: -4, scale: 1.01 }}
-                  className="p-6 rounded-2xl border-2 bg-sky-50 border-sky-200 shadow-sm relative overflow-hidden cursor-pointer"
-                  onClick={() => setEditingNotes(true)}>
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-3 bg-white/60 rounded-xl backdrop-blur-sm shadow-sm">
-                        <FileText className="w-6 h-6 text-sky-500" />
-                      </div>
-                      <h3 className="font-bold text-xl text-slate-800">我的備註</h3>
-                    </div>
-                    <span className="text-xs font-semibold px-2 py-1 bg-sky-100 rounded-full text-sky-600">手動填寫</span>
-                  </div>
-                  <p className="text-lg text-slate-700 leading-relaxed font-medium whitespace-pre-wrap">{personalNotes}</p>
-                </motion.div>
-              )}
-
-              {/* 備註編輯模式 or 空白時的新增入口 */}
-              {(editingNotes || !personalNotes.trim()) && (
-                <div className="p-6 rounded-2xl border-2 border-dashed border-sky-300 bg-sky-50/50">
-                  <div className="flex items-center gap-2 mb-3">
-                    <FileText className="w-5 h-5 text-sky-500" />
-                    <h3 className="font-bold text-slate-700">我的備註</h3>
-                    <span className="text-xs bg-sky-100 text-sky-600 px-2 py-0.5 rounded-full">手動填寫・小安會參考</span>
-                  </div>
-                  <textarea value={personalNotes} onChange={e => setPersonalNotes(e.target.value)} rows={3}
-                    placeholder="寫下想讓小安知道的事，例如：我對海鮮過敏、每週三要去復健..."
-                    className="w-full border border-sky-300 rounded-xl px-3 py-2 text-base focus:outline-none focus:border-sky-500 resize-none" />
-                  <div className="flex justify-end gap-2 mt-2">
-                    {editingNotes && <button onClick={() => setEditingNotes(false)} className="px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700">取消</button>}
-                    <button onClick={handleSaveNotes} disabled={savingNotes}
-                      className="px-4 py-1.5 bg-sky-500 hover:bg-sky-600 disabled:bg-sky-300 text-white text-sm rounded-lg font-bold flex items-center gap-1">
-                      <Save className="w-4 h-4" />{savingNotes ? '儲存中...' : '儲存'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* AI 自動記憶卡 */}
-              {memoryCards.map((card) => (
-                <motion.div whileHover={{ y: -4, scale: 1.01 }} key={card.id}
-                  className={`p-6 rounded-2xl border-2 ${getBgForType(card.type)} shadow-sm relative overflow-hidden`}>
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-3 bg-white/60 rounded-xl backdrop-blur-sm shadow-sm">{getIconForType(card.type)}</div>
-                      <h3 className="font-bold text-xl text-slate-800">{card.title}</h3>
-                    </div>
-                    <span className="text-sm font-semibold px-3 py-1 bg-white/60 rounded-full text-slate-600">{card.date}</span>
-                  </div>
-                  <p className="text-lg text-slate-700 leading-relaxed font-medium">{card.content}</p>
-                </motion.div>
-              ))}
-
-              {memoryCards.length === 0 && !personalNotes.trim() && (
-                <div className="col-span-full py-12 text-center bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
-                  <Brain className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                  <p className="text-slate-500 font-medium">目前還沒有記憶卡片，多跟小安聊天就會產生喔！</p>
-                </div>
-              )}
-            </div>
-          )}
-        </motion.section>
+        {/* ===== 記憶足跡時間軸 ===== */}
+        <MemoryTimeline
+          memoryCards={memoryCards}
+          loading={loading}
+          personalNotes={personalNotes}
+          setPersonalNotes={setPersonalNotes}
+          editingNotes={editingNotes}
+          setEditingNotes={setEditingNotes}
+          savingNotes={savingNotes}
+          handleSaveNotes={handleSaveNotes}
+          getIconForType={getIconForType}
+          getBgForType={getBgForType}
+        />
       </main>
     </div>
   );
