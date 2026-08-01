@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useMockData } from '../store/MockDataContext';
 import { useNavigate } from 'react-router-dom';
-import { Plus, User, LogOut, ArrowRight, HeartPulse, UserPlus, X, MessageSquare, Loader2, Trash2 } from 'lucide-react';
+import { Plus, User, LogOut, ArrowRight, HeartPulse, UserPlus, X, MessageSquare, Loader2, Trash2, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { followApi } from '../services/api';
 
@@ -14,11 +14,26 @@ const CaregiverDashboard: React.FC = () => {
   const [bindError, setBindError] = useState('');
   const [bindLoading, setBindLoading] = useState(false);
   const [removeLoading, setRemoveLoading] = useState<string | null>(null);
+  const [pendingSent, setPendingSent] = useState<any[]>([]);
+  const [cancelLoading, setCancelLoading] = useState<string | null>(null);
+
+  const loadPendingSent = async () => {
+    try {
+      const data = await followApi.getMyPendingSent();
+      setPendingSent(data);
+    } catch (err) {
+      console.error('Failed to load pending sent:', err);
+    }
+  };
 
   // 頁面載入時確保追蹤列表是最新的，並每 5 秒輪詢
   useEffect(() => {
     refreshFollowing();
-    const interval = setInterval(refreshFollowing, 5000);
+    loadPendingSent();
+    const interval = setInterval(() => {
+      refreshFollowing();
+      loadPendingSent();
+    }, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -34,6 +49,7 @@ const CaregiverDashboard: React.FC = () => {
     setBindLoading(true);
     try {
       await bindElderViaApi(bindUsername.trim(), bindCode.trim());
+      await loadPendingSent();
       setShowBindModal(false);
       setBindUsername('');
       setBindCode('');
@@ -55,6 +71,19 @@ const CaregiverDashboard: React.FC = () => {
       console.error('Failed to remove follow:', err);
     } finally {
       setRemoveLoading(null);
+    }
+  };
+
+  const handleCancelPending = async (followId: string) => {
+    if (!confirm('確定要取消這個追蹤請求嗎？')) return;
+    setCancelLoading(followId);
+    try {
+      await followApi.remove(followId);
+      setPendingSent(prev => prev.filter(p => p.follow_id !== followId));
+    } catch (err) {
+      console.error('Failed to cancel pending:', err);
+    } finally {
+      setCancelLoading(null);
     }
   };
 
@@ -142,6 +171,45 @@ const CaregiverDashboard: React.FC = () => {
                 </div>
               </motion.div>
             ))}
+          </div>
+        )}
+
+        {/* 待接受的追蹤 */}
+        {pendingSent.length > 0 && (
+          <div className="mt-10">
+            <h2 className="text-2xl font-bold text-slate-700 mb-4 flex items-center gap-2">
+              <Clock className="w-6 h-6 text-amber-500" />
+              待接受的追蹤
+              <span className="text-base font-normal text-slate-400">({pendingSent.length})</span>
+            </h2>
+            <div className="space-y-3">
+              {pendingSent.map((item) => (
+                <div
+                  key={item.follow_id}
+                  className="flex items-center justify-between p-4 bg-amber-50 rounded-xl border border-amber-200"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-orange-400 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                      {(item.display_name || '?')[0]}
+                    </div>
+                    <div>
+                      <p className="font-bold text-slate-800">{item.display_name || '未知'}</p>
+                      <p className="text-sm text-slate-500">@{item.account_handle || '—'}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-amber-600 font-medium bg-amber-100 px-3 py-1 rounded-full">等待對方接受</span>
+                    <button
+                      onClick={() => handleCancelPending(item.follow_id)}
+                      disabled={cancelLoading === item.follow_id}
+                      className="text-sm text-red-400 hover:text-red-600 font-semibold transition-colors"
+                    >
+                      {cancelLoading === item.follow_id ? '取消中...' : '取消請求'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </main>

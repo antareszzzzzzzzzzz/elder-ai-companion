@@ -288,3 +288,38 @@ def remove_follow():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@follow_bp.route("/my-pending-sent", methods=["GET"])
+@require_auth
+def my_pending_sent():
+    """Get pending follow requests that I sent (as follower), not yet approved."""
+    try:
+        response = follows_table.scan(
+            FilterExpression="follower_id = :fid AND #s = :status",
+            ExpressionAttributeNames={"#s": "status"},
+            ExpressionAttributeValues={
+                ":fid": g.user_id,
+                ":status": "pending"
+            }
+        )
+        items = response.get("Items", [])
+
+        result = []
+        for item in items:
+            account_resp = accounts_table.get_item(Key={"account_id": item["followee_id"]})
+            if "Item" in account_resp:
+                acc = account_resp["Item"]
+                result.append({
+                    "follow_id": item["follow_id"],
+                    "account_id": acc["account_id"],
+                    "account_handle": acc.get("account_handle", ""),
+                    "display_name": acc.get("display_name", ""),
+                    "avatar_url": acc.get("avatar_url", ""),
+                    "created_at": item.get("created_at", "")
+                })
+
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
