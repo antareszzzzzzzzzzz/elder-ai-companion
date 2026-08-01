@@ -116,7 +116,7 @@ def generate_weekly(target_account_id):
                 s_date = datetime.fromisoformat(s["date"]).date() if 'T' in s.get("date", "") else datetime.strptime(s["date"], "%Y-%m-%d").date()
             except (ValueError, KeyError):
                 continue
-            if s_date < today:
+            if s_date <= today:
                 daily_before_today.append(s)
 
         if not daily_before_today:

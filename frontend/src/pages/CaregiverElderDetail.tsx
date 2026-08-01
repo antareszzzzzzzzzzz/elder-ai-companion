@@ -164,6 +164,16 @@ const CaregiverElderDetail: React.FC = () => {
       }))
     : [];
 
+  // 摘要依 summary_type 分組，各自依 date 新到舊排序
+  const weeklySummaries = dailySummaries
+    .filter((s) => s.summary_type === 'weekly')
+    .slice()
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  const dailyOnlySummaries = dailySummaries
+    .filter((s) => s.summary_type !== 'weekly')
+    .slice()
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+
   if (!accountId) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -326,41 +336,79 @@ const CaregiverElderDetail: React.FC = () => {
                   </button>
                 </div>
 
-                {/* 摘要時間軸 */}
-                <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 relative">
-                  <div className="absolute left-10 top-16 bottom-8 w-1 bg-teal-100 rounded-full"></div>
-
-                  {loadingOverview ? (
+                {/* 摘要區塊 */}
+                {loadingOverview ? (
+                  <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100">
                     <div className="flex items-center justify-center py-12">
                       <Loader2 className="w-6 h-6 text-teal-500 animate-spin" />
                       <span className="ml-2 text-slate-500">載入摘要中...</span>
                     </div>
-                  ) : dailySummaries.length > 0 ? (
-                    <div className="space-y-8 relative z-10">
-                      {dailySummaries.map((summary, idx) => {
-                        const isWeekly = summary.summary_type === 'weekly';
-                        return (
-                          <div key={idx} className="flex gap-6">
-                            <div className={`w-8 h-8 rounded-full text-white flex items-center justify-center shadow-md flex-shrink-0 mt-1 ${isWeekly ? 'bg-indigo-400' : 'bg-teal-500'}`}>
-                              <MessageSquare className="w-4 h-4" />
-                            </div>
-                            <div className={`p-6 rounded-2xl border flex-1 ${isWeekly ? 'bg-indigo-50/50 border-indigo-200' : 'bg-slate-50 border-slate-200'}`}>
-                              <div className="flex justify-between items-center mb-3">
-                                <h4 className="font-bold text-lg text-slate-800">{isWeekly ? '本週總結' : '每日摘要'}</h4>
-                                <span className="text-sm font-semibold text-slate-500">{summary.date}</span>
+                  </div>
+                ) : dailySummaries.length > 0 ? (
+                  <>
+                    {/* 本週總結區塊 */}
+                    <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 relative">
+                      <h3 className="text-xl font-bold text-slate-800 mb-6">本週總結</h3>
+                      {weeklySummaries.length > 0 && (
+                        <div className="absolute left-10 top-20 bottom-8 w-1 bg-indigo-100 rounded-full"></div>
+                      )}
+                      {weeklySummaries.length > 0 ? (
+                        <div className="space-y-8 relative z-10">
+                          {weeklySummaries.map((summary, idx) => (
+                            <div key={idx} className="flex gap-6">
+                              <div className="w-8 h-8 rounded-full text-white flex items-center justify-center shadow-md flex-shrink-0 mt-1 bg-indigo-400">
+                                <MessageSquare className="w-4 h-4" />
                               </div>
-                              <p className="text-slate-700 leading-relaxed text-lg">{summary.summary_text}</p>
+                              <div className="p-6 rounded-2xl border flex-1 bg-indigo-50/50 border-indigo-200">
+                                <div className="flex justify-between items-center mb-3">
+                                  <h4 className="font-bold text-lg text-slate-800">本週總結</h4>
+                                  <span className="text-sm font-semibold text-slate-500">{summary.date}</span>
+                                </div>
+                                <p className="text-slate-700 leading-relaxed text-lg">{summary.summary_text}</p>
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-slate-400 text-center py-6">尚無本週總結，點擊上方按鈕產生</p>
+                      )}
                     </div>
-                  ) : (
-                    <div className="text-center py-12 relative z-10">
+
+                    {/* 每日摘要區塊 */}
+                    <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 relative">
+                      <h3 className="text-xl font-bold text-slate-800 mb-6">每日摘要</h3>
+                      {dailyOnlySummaries.length > 0 && (
+                        <div className="absolute left-10 top-20 bottom-8 w-1 bg-teal-100 rounded-full"></div>
+                      )}
+                      {dailyOnlySummaries.length > 0 ? (
+                        <div className="space-y-8 relative z-10">
+                          {dailyOnlySummaries.map((summary, idx) => (
+                            <div key={idx} className="flex gap-6">
+                              <div className="w-8 h-8 rounded-full text-white flex items-center justify-center shadow-md flex-shrink-0 mt-1 bg-teal-500">
+                                <MessageSquare className="w-4 h-4" />
+                              </div>
+                              <div className="p-6 rounded-2xl border flex-1 bg-slate-50 border-slate-200">
+                                <div className="flex justify-between items-center mb-3">
+                                  <h4 className="font-bold text-lg text-slate-800">每日摘要</h4>
+                                  <span className="text-sm font-semibold text-slate-500">{summary.date}</span>
+                                </div>
+                                <p className="text-slate-700 leading-relaxed text-lg">{summary.summary_text}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-slate-400 text-center py-6">尚無每日摘要，點擊上方按鈕產生</p>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100">
+                    <div className="text-center py-12">
                       <p className="text-slate-400 text-lg">尚無摘要紀錄，點擊上方按鈕產生</p>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             )}
 
