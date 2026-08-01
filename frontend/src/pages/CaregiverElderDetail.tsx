@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useMockData } from '../store/MockDataContext';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, User, MessageSquare, BellRing, Trash2, Plus, Brain, Utensils, Pill, Activity, HeartPulse, Loader2, RefreshCw, Lightbulb } from 'lucide-react';
+import { ArrowLeft, User, MessageSquare, BellRing, Trash2, Plus, Brain, Utensils, Pill, Activity, HeartPulse, Loader2, RefreshCw, Lightbulb, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { healthApi, summaryApi, careItemsApi, type DailySummary, type HealthOverview, type CareItem } from '../services/api';
+import { healthApi, summaryApi, careItemsApi, followApi, type DailySummary, type HealthOverview, type CareItem } from '../services/api';
 
 const CaregiverElderDetail: React.FC = () => {
   const { followingElders } = useMockData();
@@ -29,12 +29,59 @@ const CaregiverElderDetail: React.FC = () => {
   const [newQuestion, setNewQuestion] = useState('');
   const [newTrackMode, setNewTrackMode] = useState(true); // true = 需確認, false = 提醒一次即可
 
+  // 每日摘要自動推播排程
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduleTime, setScheduleTime] = useState('20:00');
+  const [loadingSchedule, setLoadingSchedule] = useState(false);
+  const [savingSchedule, setSavingSchedule] = useState(false);
+  const [scheduleMessage, setScheduleMessage] = useState<string | null>(null);
+
   useEffect(() => {
     if (accountId) {
       loadHealthData();
       loadCareItems();
+      loadSchedule();
     }
   }, [accountId]);
+
+  const loadSchedule = async () => {
+    if (!accountId) return;
+    setLoadingSchedule(true);
+    try {
+      const data = await followApi.getSummarySchedule(accountId);
+      if (data.daily_summary_time) {
+        setScheduleEnabled(true);
+        setScheduleTime(data.daily_summary_time);
+      } else {
+        setScheduleEnabled(false);
+      }
+    } catch (err) {
+      console.warn('Summary schedule API error:', err);
+    } finally {
+      setLoadingSchedule(false);
+    }
+  };
+
+  const handleSaveSchedule = async () => {
+    if (!accountId) return;
+    setSavingSchedule(true);
+    setScheduleMessage(null);
+    try {
+      const data = await followApi.setSummarySchedule(
+        accountId,
+        scheduleEnabled ? scheduleTime : null
+      );
+      setScheduleMessage(
+        data.daily_summary_time
+          ? `已設定：每天 ${data.daily_summary_time} 自動產生每日摘要`
+          : '已關閉自動推播'
+      );
+    } catch (err: any) {
+      setScheduleMessage(err?.message || '設定失敗，請稍後再試');
+    } finally {
+      setSavingSchedule(false);
+    }
+  };
 
   const loadCareItems = async () => {
     if (!accountId) return;
@@ -335,6 +382,92 @@ const CaregiverElderDetail: React.FC = () => {
                     <p className="text-amber-800 text-lg leading-relaxed">{insights}</p>
                   </motion.div>
                 )}
+
+                {/* 自動推播每日摘要設定 */}
+                <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100">
+                  <div className="mb-5">
+                    <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                      <Clock className="w-6 h-6 text-teal-500" /> 自動推播每日摘要
+                    </h3>
+                    <p className="text-slate-500 mt-1">
+                      設定時間後，系統會在每天該時間自動產生 {displayName} 的每日摘要，並在通知鈴鐺提醒您。
+                    </p>
+                  </div>
+
+                  {loadingSchedule ? (
+                    <div className="flex items-center py-4">
+                      <Loader2 className="w-5 h-5 text-teal-500 animate-spin" />
+                      <span className="ml-2 text-slate-500">載入設定中...</span>
+                    </div>
+                  ) : (
+                    <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
+                      <div className="flex items-center gap-3 mb-5">
+                        <input
+                          id="schedule-enabled"
+                          type="checkbox"
+                          checked={scheduleEnabled}
+                          onChange={(e) => {
+                            setScheduleEnabled(e.target.checked);
+                            setScheduleMessage(null);
+                          }}
+                          className="w-5 h-5 rounded border-slate-300 text-teal-600 focus:ring-4 focus:ring-teal-100 cursor-pointer"
+                        />
+                        <label
+                          htmlFor="schedule-enabled"
+                          className="text-lg font-semibold text-slate-700 cursor-pointer"
+                        >
+                          啟用自動推播
+                        </label>
+                      </div>
+
+                      <div className="flex flex-wrap items-end gap-4">
+                        <div>
+                          <label
+                            htmlFor="schedule-time"
+                            className="block text-sm font-semibold text-slate-600 mb-2"
+                          >
+                            推播時間（台灣時間）
+                          </label>
+                          <input
+                            id="schedule-time"
+                            type="time"
+                            value={scheduleTime}
+                            disabled={!scheduleEnabled}
+                            onChange={(e) => {
+                              setScheduleTime(e.target.value);
+                              setScheduleMessage(null);
+                            }}
+                            className="border border-slate-300 rounded-xl px-4 py-3 text-lg focus:outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-50 disabled:bg-slate-100 disabled:text-slate-400"
+                          />
+                        </div>
+
+                        <button
+                          onClick={handleSaveSchedule}
+                          disabled={savingSchedule || (scheduleEnabled && !scheduleTime)}
+                          className="flex items-center gap-2 px-6 py-3 bg-teal-600 hover:bg-teal-700 disabled:bg-teal-300 text-white rounded-xl font-bold transition-all shadow-md"
+                        >
+                          {savingSchedule ? (
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                          ) : (
+                            <Clock className="w-5 h-5" />
+                          )}
+                          {savingSchedule ? '儲存中...' : '儲存設定'}
+                        </button>
+                      </div>
+
+                      {scheduleMessage && (
+                        <p className="mt-4 text-sm font-semibold text-teal-700" role="status">
+                          {scheduleMessage}
+                        </p>
+                      )}
+
+                      <p className="mt-4 text-xs text-slate-400 leading-relaxed">
+                        若伺服器在設定時間點未啟動，之後啟動時會自動補產生當天摘要。
+                        同一天只會產生一次，重複觸發不會覆蓋。
+                      </p>
+                    </div>
+                  )}
+                </div>
 
                 {/* 操作按鈕 */}
                 <div className="flex flex-wrap gap-3">

@@ -120,7 +120,16 @@ export interface HealthOverview {
   daily_summaries: DailySummary[];
   medication_facts: Fact[];
   body_facts: Fact[];
+  diet_facts?: Fact[];
+  mood_facts?: Fact[];
+  other_facts?: Fact[];
   cross_day_insights: string | null;
+}
+
+export interface SummarySchedule {
+  followee_id: string;
+  /** "HH:MM"（24 小時制，台灣時間）；null 代表未設定 / 已關閉 */
+  daily_summary_time: string | null;
 }
 
 export interface ProfileData {
@@ -179,6 +188,17 @@ export const followApi = {
   approve: (followId: string) => api.post('/api/follow/approve', { follow_id: followId }),
   reject: (followId: string) => api.post('/api/follow/reject', { follow_id: followId }),
   remove: (followId: string) => api.post('/api/follow/remove', { follow_id: followId }),
+
+  /** 取得對某位被追蹤者設定的每日摘要自動推播時間 */
+  getSummarySchedule: (followeeId: string) =>
+    api.get<SummarySchedule>(`/api/follow/summary-schedule/${followeeId}`),
+
+  /** 設定每日摘要自動推播時間；傳 null 代表關閉 */
+  setSummarySchedule: (followeeId: string, time: string | null) =>
+    api.put<SummarySchedule>('/api/follow/summary-schedule', {
+      followee_id: followeeId,
+      daily_summary_time: time,
+    }),
 };
 
 // ============ 照護者關懷事項 ============

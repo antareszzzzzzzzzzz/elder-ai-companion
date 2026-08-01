@@ -1,7 +1,9 @@
+import os
 from flask import Flask, request as flask_request
 from flask_cors import CORS
 from config import Config
 from services.logger import app_logger
+from services.scheduler import start_scheduler
 from routes.auth import auth_bp
 from routes.chat import chat_bp
 from routes.profile import profile_bp
@@ -42,6 +44,16 @@ def health_check():
     return {"status": "ok"}, 200
 
 
+DEBUG_MODE = True
+
 if __name__ == "__main__":
     app_logger.info("=== Elder Care AI Backend starting on port 5000 ===")
-    app.run(debug=True, port=5000)
+
+    # Flask debug 的自動重載會開兩個 process（父進程負責監看檔案、子進程實際提供服務）。
+    # 排程只能在實際提供服務的那個 process 啟動，否則同一天的摘要會被產生兩次。
+    # 子進程的環境變數會帶 WERKZEUG_RUN_MAIN=true。
+    is_serving_process = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
+    if is_serving_process or not DEBUG_MODE:
+        start_scheduler()
+
+    app.run(debug=DEBUG_MODE, port=5000)
