@@ -204,7 +204,7 @@ const ElderlyDashboard: React.FC = () => {
                     查看個人資料
                   </button>
                   <button
-                    onClick={() => { user?.role === 'caregiver' ? navigate('/') : switchRole(); }}
+                    onClick={() => { user?.role === 'caregiver' ? navigate('/caregiver') : switchRole(); }}
                     className="w-full flex items-center gap-3 px-4 py-3 hover:bg-teal-50 rounded-lg transition-colors text-lg font-semibold text-slate-700"
                   >
                     <Repeat className="w-5 h-5 text-teal-600" />

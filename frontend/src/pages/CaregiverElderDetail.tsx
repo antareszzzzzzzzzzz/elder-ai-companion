@@ -192,7 +192,7 @@ const CaregiverElderDetail: React.FC = () => {
         <div className="max-w-5xl mx-auto px-4">
           <div className="py-4 flex items-center justify-between">
             <button
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/caregiver')}
               className="flex items-center gap-2 text-slate-600 hover:text-teal-600 font-semibold transition-colors"
             >
               <ArrowLeft className="w-6 h-6" /> 返回列表

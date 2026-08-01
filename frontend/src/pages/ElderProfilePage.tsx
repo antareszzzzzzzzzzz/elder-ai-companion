@@ -326,7 +326,7 @@ const ElderProfilePage: React.FC = () => {
       <header className="bg-white border-b border-slate-200 sticky top-0 z-20 shadow-sm">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
           <button onClick={() => navigate('/')} className="flex items-center gap-2 text-slate-600 hover:text-emerald-600 font-semibold transition-colors">
-            <ArrowLeft className="w-6 h-6" /> 返回首頁
+            <ArrowLeft className="w-6 h-6" /> 回到聊天
           </button>
           <h1 className="text-2xl font-bold text-slate-800">個人資料設定</h1>
           <div className="w-24"></div>
