@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useMockData } from '../store/MockDataContext';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, User, MessageSquare, BellRing, Save, Trash2, Plus, Brain, Utensils, Pill, Activity, HeartPulse, Loader2, RefreshCw, Lightbulb } from 'lucide-react';
+import { ArrowLeft, User, MessageSquare, BellRing, Trash2, Plus, Brain, Utensils, Pill, Activity, HeartPulse, Loader2, RefreshCw, Lightbulb } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { healthApi, summaryApi, type DailySummary, type HealthOverview } from '../services/api';
+import { healthApi, summaryApi, careItemsApi, type DailySummary, type HealthOverview, type CareItem } from '../services/api';
 
 const CaregiverElderDetail: React.FC = () => {
-  const { followingElders, updateReminders, elders } = useMockData();
+  const { followingElders } = useMockData();
   const navigate = useNavigate();
   const { accountId } = useParams<{ accountId: string }>();
 
@@ -23,16 +23,31 @@ const CaregiverElderDetail: React.FC = () => {
   const [generatingInsights, setGeneratingInsights] = useState(false);
   const [generatingSummary, setGeneratingSummary] = useState(false);
 
-  // Reminders (仍為本地 state，後端尚未支援)
-  const elderMockData = elderInfo ? elders[elderInfo.account_handle] : null;
-  const [reminders, setReminders] = useState(elderMockData?.reminders || []);
+  // Reminders — 串接後端 API
+  const [careItems, setCareItems] = useState<CareItem[]>([]);
+  const [loadingCareItems, setLoadingCareItems] = useState(false);
   const [newQuestion, setNewQuestion] = useState('');
+  const [newTrackMode, setNewTrackMode] = useState(true); // true = 需確認, false = 提醒一次即可
 
   useEffect(() => {
     if (accountId) {
       loadHealthData();
+      loadCareItems();
     }
   }, [accountId]);
+
+  const loadCareItems = async () => {
+    if (!accountId) return;
+    setLoadingCareItems(true);
+    try {
+      const items = await careItemsApi.getItems(accountId);
+      setCareItems(items);
+    } catch (err) {
+      console.warn('Care items API error:', err);
+    } finally {
+      setLoadingCareItems(false);
+    }
+  };
 
   const loadHealthData = async () => {
     if (!accountId) return;
@@ -92,26 +107,39 @@ const CaregiverElderDetail: React.FC = () => {
     }
   };
 
-  const handleSaveReminders = () => {
-    if (elderInfo && elderMockData) {
-      updateReminders(elderInfo.account_handle, reminders);
-      alert('提醒設定已儲存！');
-    }
-  };
-
-  const handleAddReminder = () => {
-    if (newQuestion.trim()) {
-      setReminders([...reminders, { id: Date.now().toString(), question: newQuestion, isActive: true }]);
+  const handleAddReminder = async () => {
+    if (!newQuestion.trim() || !accountId) return;
+    try {
+      const newItem = await careItemsApi.addItem(accountId, newQuestion.trim(), newTrackMode);
+      setCareItems([newItem, ...careItems]);
       setNewQuestion('');
+      setNewTrackMode(true);
+    } catch (err) {
+      console.error('Add care item error:', err);
+      alert('新增失敗，請稍後再試');
     }
   };
 
-  const removeReminder = (id: string) => {
-    setReminders(reminders.filter((r) => r.id !== id));
+  const removeReminder = async (factId: string) => {
+    if (!accountId) return;
+    try {
+      // 先把 track 設為 false（停止 AI 提醒），再從 UI 移除
+      await careItemsApi.deleteItem(accountId, factId);
+      setCareItems(careItems.filter((r) => r.fact_id !== factId));
+    } catch (err) {
+      console.error('Delete care item error:', err);
+      alert('刪除失敗，請稍後再試');
+    }
   };
 
-  const toggleReminder = (id: string) => {
-    setReminders(reminders.map((r) => (r.id === id ? { ...r, isActive: !r.isActive } : r)));
+  const handleStopTracking = async (factId: string) => {
+    if (!accountId) return;
+    try {
+      await careItemsApi.updateTrack(accountId, factId, false);
+      setCareItems(careItems.map((r) => r.fact_id === factId ? { ...r, track: false } : r));
+    } catch (err) {
+      console.error('Stop tracking error:', err);
+    }
   };
 
   const getIconForType = (type: string) => {
@@ -415,54 +443,121 @@ const CaregiverElderDetail: React.FC = () => {
             {/* ========== 設定提醒 Tab ========== */}
             {activeTab === 'reminders' && (
               <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100">
-                <div className="flex justify-between items-center mb-8">
-                  <div>
-                    <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                      <BellRing className="w-6 h-6 text-teal-500" /> 主動關懷設定
-                    </h3>
-                    <p className="text-slate-500 mt-1">設定小安助手在與長輩對話時，主動詢問的關心事項。</p>
-                  </div>
-                  <button onClick={handleSaveReminders} className="flex items-center gap-2 px-6 py-3 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold transition-all shadow-md">
-                    <Save className="w-5 h-5" /> 儲存變更
-                  </button>
+                <div className="mb-8">
+                  <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                    <BellRing className="w-6 h-6 text-teal-500" /> 主動關懷設定
+                  </h3>
+                  <p className="text-slate-500 mt-1">設定小安助手在與長輩對話時，主動詢問的關心事項。</p>
                 </div>
 
-                <div className="space-y-4 mb-8">
-                  {reminders.map((reminder) => (
-                    <div key={reminder.id} className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all ${reminder.isActive ? 'border-teal-200 bg-teal-50/50' : 'border-slate-100 bg-slate-50 opacity-60'}`}>
-                      <div className="flex items-center gap-4 flex-1">
-                        <label className="relative inline-flex items-center cursor-pointer">
-                          <input type="checkbox" checked={reminder.isActive} onChange={() => toggleReminder(reminder.id)} className="sr-only peer" />
-                          <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-500"></div>
-                        </label>
-                        <span className={`text-lg font-semibold ${reminder.isActive ? 'text-slate-800' : 'text-slate-500 line-through'}`}>{reminder.question}</span>
-                      </div>
-                      <button onClick={() => removeReminder(reminder.id)} className="p-2 text-slate-400 hover:text-red-500 transition-colors">
-                        <Trash2 className="w-5 h-5" />
-                      </button>
-                    </div>
-                  ))}
-                  {reminders.length === 0 && (
-                    <p className="text-center text-slate-400 py-4">目前沒有設定任何提醒事項</p>
-                  )}
-                </div>
-
-                <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
+                {/* 新增關懷事項區塊 */}
+                <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 mb-8">
                   <h4 className="font-bold text-slate-700 mb-4 text-lg">新增關懷事項</h4>
-                  <div className="flex gap-4">
+                  <div className="flex gap-4 mb-4">
                     <input
                       type="text"
                       value={newQuestion}
                       onChange={(e) => setNewQuestion(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleAddReminder()}
-                      placeholder="例如：今天量血壓了嗎？"
+                      placeholder="例如：今天記得餵貓了嗎？"
                       className="flex-1 border border-slate-300 rounded-xl px-4 py-3 text-lg focus:outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-50"
                     />
                     <button onClick={handleAddReminder} disabled={!newQuestion.trim()} className="bg-slate-800 hover:bg-slate-900 disabled:bg-slate-300 text-white px-6 rounded-xl font-bold transition-colors flex items-center gap-2">
                       <Plus className="w-5 h-5" /> 新增
                     </button>
                   </div>
+                  {/* 追蹤模式切換 */}
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-semibold text-slate-600">提醒模式：</span>
+                    <button
+                      onClick={() => setNewTrackMode(true)}
+                      className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${newTrackMode ? 'bg-teal-600 text-white shadow-md' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}
+                    >
+                      需要確認回覆
+                    </button>
+                    <button
+                      onClick={() => setNewTrackMode(false)}
+                      className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${!newTrackMode ? 'bg-indigo-500 text-white shadow-md' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}
+                    >
+                      提醒一次即可
+                    </button>
+                    <span className="text-xs text-slate-400 ml-2">
+                      {newTrackMode ? '長輩需明確回覆已完成才會停止提醒' : 'AI 提過一次後自動結束'}
+                    </span>
+                  </div>
                 </div>
+
+                {/* 進行中的提醒（track=true） */}
+                {loadingCareItems ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-6 h-6 text-teal-500 animate-spin" />
+                    <span className="ml-2 text-slate-500">載入關懷事項中...</span>
+                  </div>
+                ) : (
+                  <>
+                    {/* 等待回覆中的提醒 */}
+                    {careItems.filter((r) => r.track).length > 0 && (
+                      <div className="mb-8">
+                        <h4 className="font-bold text-slate-700 mb-4 text-lg flex items-center gap-2">
+                          <span className="w-3 h-3 bg-amber-400 rounded-full animate-pulse"></span>
+                          提醒中（等待長輩回應）
+                        </h4>
+                        <div className="space-y-3">
+                          {careItems.filter((r) => r.track).map((item) => (
+                            <div key={item.fact_id} className="flex items-center justify-between p-4 rounded-xl border-2 border-amber-200 bg-amber-50/50 transition-all">
+                              <div className="flex items-center gap-3 flex-1">
+                                <div className="flex flex-col">
+                                  <span className="text-lg font-semibold text-slate-800">{item.content}</span>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${item.require_confirmation ? 'bg-teal-100 text-teal-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                                      {item.require_confirmation ? '需確認回覆' : '提醒一次即可'}
+                                    </span>
+                                    <span className="text-xs text-amber-600 font-semibold">未獲回覆</span>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => handleStopTracking(item.fact_id)}
+                                  className="px-3 py-1.5 text-sm font-semibold text-slate-500 hover:text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-100 transition-colors"
+                                  title="手動標記為已完成"
+                                >
+                                  標記完成
+                                </button>
+                                <button onClick={() => removeReminder(item.fact_id)} className="p-2 text-slate-400 hover:text-red-500 transition-colors" title="刪除此提醒">
+                                  <Trash2 className="w-5 h-5" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 已完成的提醒（track=false） */}
+                    {careItems.filter((r) => !r.track).length > 0 && (
+                      <div className="mb-4">
+                        <h4 className="font-bold text-slate-400 mb-4 text-lg">已完成 / 已停止提醒</h4>
+                        <div className="space-y-3">
+                          {careItems.filter((r) => !r.track).map((item) => (
+                            <div key={item.fact_id} className="flex items-center justify-between p-4 rounded-xl border-2 border-slate-100 bg-slate-50 opacity-60 transition-all">
+                              <div className="flex items-center gap-3 flex-1">
+                                <span className="text-lg font-semibold text-slate-500 line-through">{item.content}</span>
+                              </div>
+                              <button onClick={() => removeReminder(item.fact_id)} className="p-2 text-slate-400 hover:text-red-500 transition-colors" title="刪除">
+                                <Trash2 className="w-5 h-5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {careItems.length === 0 && (
+                      <p className="text-center text-slate-400 py-8 text-lg">目前沒有設定任何關懷提醒事項</p>
+                    )}
+                  </>
+                )}
               </div>
             )}
           </motion.div>

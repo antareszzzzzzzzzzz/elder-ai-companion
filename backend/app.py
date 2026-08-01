@@ -8,6 +8,7 @@ from routes.profile import profile_bp
 from routes.follow import follow_bp
 from routes.summary import summary_bp
 from routes.health_overview import health_overview_bp
+from routes.care_items import care_items_bp
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -20,6 +21,7 @@ app.register_blueprint(profile_bp, url_prefix="/api/profile")
 app.register_blueprint(follow_bp, url_prefix="/api/follow")
 app.register_blueprint(summary_bp, url_prefix="/api/summary")
 app.register_blueprint(health_overview_bp, url_prefix="/api/health-overview")
+app.register_blueprint(care_items_bp, url_prefix="/api/care-items")
 
 
 @app.before_request
