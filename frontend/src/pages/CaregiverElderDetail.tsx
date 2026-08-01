@@ -536,12 +536,17 @@ const CaregiverElderDetail: React.FC = () => {
                       </div>
                     )}
 
-                    {/* 已完成的提醒（track=false） */}
+                    {/* 已完成的提醒（track=false），最多顯示 10 項 */}
                     {careItems.filter((r) => !r.track).length > 0 && (
                       <div className="mb-4">
-                        <h4 className="font-bold text-slate-400 mb-4 text-lg">已完成 / 已停止提醒</h4>
+                        <h4 className="font-bold text-slate-400 mb-4 text-lg">
+                          已完成 / 已停止提醒
+                          {careItems.filter((r) => !r.track).length > 10 && (
+                            <span className="text-sm font-normal ml-2">（顯示最新 10 項，共 {careItems.filter((r) => !r.track).length} 項）</span>
+                          )}
+                        </h4>
                         <div className="space-y-3">
-                          {careItems.filter((r) => !r.track).map((item) => (
+                          {careItems.filter((r) => !r.track).slice(0, 10).map((item) => (
                             <div key={item.fact_id} className="flex items-center justify-between p-4 rounded-xl border-2 border-slate-100 bg-slate-50 opacity-60 transition-all">
                               <div className="flex items-center gap-3 flex-1">
                                 <span className="text-lg font-semibold text-slate-500 line-through">{item.content}</span>
