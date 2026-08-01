@@ -51,6 +51,18 @@ class ApiService {
     }
     return response.json();
   }
+
+  async delete<T = any>(path: string): Promise<T> {
+    const response = await fetch(`${API_BASE}${path}`, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Request failed' }));
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
+    return response.json();
+  }
 }
 
 export const api = new ApiService();
@@ -167,4 +179,39 @@ export const followApi = {
   approve: (followId: string) => api.post('/api/follow/approve', { follow_id: followId }),
   reject: (followId: string) => api.post('/api/follow/reject', { follow_id: followId }),
   remove: (followId: string) => api.post('/api/follow/remove', { follow_id: followId }),
+};
+
+// ============ 照護者關懷事項 ============
+
+export interface CareItem {
+  fact_id: string;
+  account_id: string;
+  category: string;
+  content: string;
+  track: boolean;
+  source: 'caregiver';
+  source_account_id: string;
+  require_confirmation: boolean;
+  updated_at: string;
+}
+
+/** 照護者關懷事項相關 */
+export const careItemsApi = {
+  /** 取得某位長輩的所有關懷事項 */
+  getItems: (accountId: string) =>
+    api.get<CareItem[]>(`/api/care-items/${accountId}`),
+
+  /** 新增關懷事項 */
+  addItem: (accountId: string, content: string, track: boolean) =>
+    api.post<CareItem>(`/api/care-items/${accountId}`, { content, track }),
+
+  /** 刪除關懷事項 */
+  deleteItem: (accountId: string, factId: string) =>
+    api.delete<{ fact_id: string; status: string }>(`/api/care-items/${accountId}/${factId}`),
+
+  /** 更新追蹤狀態 */
+  updateTrack: (accountId: string, factId: string, track: boolean) =>
+    api.put<{ fact_id: string; track: boolean; updated_at: string }>(
+      `/api/care-items/${accountId}/${factId}/track`, { track }
+    ),
 };

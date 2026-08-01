@@ -131,6 +131,24 @@ def send_message():
         profile_response = accounts_table.get_item(Key={"account_id": g.user_id})
         user_profile = profile_response.get("Item", {})
 
+        # 2.6 Get caregiver care items (source='caregiver', track=True → 待提醒)
+        caregiver_reminders = []
+        try:
+            care_resp = facts_table.scan(
+                FilterExpression="account_id = :aid AND #src = :src AND track = :t",
+                ExpressionAttributeNames={"#src": "source"},
+                ExpressionAttributeValues={
+                    ":aid": g.user_id,
+                    ":src": "caregiver",
+                    ":t": True
+                }
+            )
+            caregiver_reminders = care_resp.get("Items", [])
+            if caregiver_reminders:
+                chat_logger.info(f"Caregiver reminders: {len(caregiver_reminders)} active items")
+        except Exception as e:
+            chat_logger.warning(f"Failed to load caregiver reminders: {e}")
+
         # 3. Search knowledge base (pre-step before generating response)
         kb_matches = search_knowledge_base(user_message)
         knowledge_context = format_knowledge_context(kb_matches) if kb_matches else None
@@ -144,7 +162,8 @@ def send_message():
             user_message=user_message,
             current_time=current_time,
             knowledge_context=knowledge_context,
-            profile=user_profile
+            profile=user_profile,
+            caregiver_reminders=caregiver_reminders
         )
         chat_logger.info(f"AI response generated, length={len(ai_response)}")
 
@@ -154,7 +173,8 @@ def send_message():
             facts=current_facts,
             user_message=user_message,
             ai_response=ai_response,
-            current_time=current_time
+            current_time=current_time,
+            caregiver_reminders=caregiver_reminders
         )
         chat_logger.info(f"Memory operations: {len(operations)} ops to execute")
 

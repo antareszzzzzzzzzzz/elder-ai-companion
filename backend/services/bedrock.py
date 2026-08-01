@@ -92,7 +92,8 @@ def invoke_bedrock(system_prompt: str, user_message: str, max_tokens: int = 2048
 
 
 def generate_chat_response(facts: list, user_message: str, current_time: str,
-                           knowledge_context: str = None, profile: dict = None) -> str:
+                           knowledge_context: str = None, profile: dict = None,
+                           caregiver_reminders: list = None) -> str:
     """Generate AI chat response with memory context and optional knowledge base."""
     from datetime import datetime as dt
 
@@ -210,6 +211,29 @@ def generate_chat_response(facts: list, user_message: str, current_time: str,
 - 情緒類的待追蹤事項要謹慎：如果反覆追問使用者的低落心情，對長者本身是壓力，
   這類事項優先只放在背景參考，不用每次都主動探問。"""
 
+    # 照護者設定的關懷提醒（獨立於 AI 自動追蹤的事實卡）
+    if caregiver_reminders:
+        reminder_lines = []
+        for r in caregiver_reminders:
+            confirm_tag = "【需確認】" if r.get("require_confirmation") else "【提醒一次即可】"
+            reminder_lines.append(f"- {confirm_tag} {r['content']} (id: {r['fact_id']})")
+        caregiver_text = "\n".join(reminder_lines)
+
+        system_prompt += f"""
+
+【家人設定的關懷提醒 —— 優先級高於一般待追蹤事項】
+以下是使用者的家人（照護者）特別交代要提醒的事項：
+{caregiver_text}
+
+【家人關懷提醒規則】
+- 這些是家人特別設定的提醒，優先級高於一般待追蹤事項。
+- 每次對話開始時，如果有家人提醒且使用者尚未主動提到，請優先關心其中「一件」家人提醒。
+- 標記為【需確認】的項目：你需要確認使用者已經完成（例如使用者明確說「我已經餵貓了」「藥吃了」），
+  才算完成。如果使用者沒有明確回應完成，下次對話繼續提醒。
+- 標記為【提醒一次即可】的項目：只要你在對話中提到了這件事，就算完成，不需要使用者確認。
+- 提醒時語氣要自然，像家人叮嚀一樣，不要像在念清單。
+  例如：「對了，您家人有交代要記得餵貓喔，餵了嗎？」"""
+
     system_prompt += f"""
 
 【AI 自動整理的記憶卡】（以下由系統自動歸納，勿與上方使用者自行確認的資訊混淆）
@@ -245,7 +269,7 @@ def generate_chat_response(facts: list, user_message: str, current_time: str,
     return invoke_bedrock(system_prompt, user_message)
 
 def generate_memory_operations(facts: list, user_message: str, ai_response: str,
-                               current_time: str) -> list:
+                               current_time: str, caregiver_reminders: list = None) -> list:
     """Generate memory update operations from conversation.
     Returns a list of operations or empty list on failure (safety net)."""
     facts_text = ""
@@ -291,7 +315,29 @@ category 只能是以下值之一：飲食、活動、睡眠、用藥、身體�
      （例如使用者說「好多了」「已經不痛了」），要把 track 改成 false。
    - 不要用關鍵字或 category 自動判斷，一律根據語意判斷這件事是否值得持續關心。
    - 拿不準的情況，寧可設 false，避免待追蹤清單膨脹到失去意義。
+"""
 
+    # 注入照護者提醒卡的上下文到 memory ops prompt
+    if caregiver_reminders:
+        reminder_info = "\n".join([
+            f"- id: {r['fact_id']}, content: {r['content']}, require_confirmation: {r.get('require_confirmation', True)}"
+            for r in caregiver_reminders
+        ])
+        system_prompt += f"""
+8. 【重要：照護者提醒事項的 track 解除規則】
+   以下是照護者設定的提醒事項（source='caregiver'，已在上方事實卡列表中）：
+{reminder_info}
+
+   - 如果 require_confirmation = False（提醒一次即可）：
+     只要 AI 回覆中已經提到了這件事（不論使用者有沒有回應），就用 update 把該筆的 track 設為 false。
+   - 如果 require_confirmation = True（需要確認）：
+     只有當使用者在這輪對話中**明確表示已完成**（例如「餵了」「吃了」「做了」「好了」「已經弄好了」），
+     才用 update 把該筆的 track 設為 false。
+     如果使用者沒有明確確認完成，**不要**把 track 改成 false。
+   - 這些提醒卡的 update 操作，content 維持原本內容不變，只改 track 欄位即可。
+"""
+
+    system_prompt += f"""
 請以純 JSON 格式回覆，不要加任何其他文字或 markdown：
 {{"operations": [
   {{"op": "add", "category": "用藥", "content": "早上吃了血壓藥", "track": false}},
