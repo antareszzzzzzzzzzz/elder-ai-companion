@@ -326,6 +326,7 @@ const CaregiverElderDetail: React.FC = () => {
                     {generatingWeekly ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
                     {generatingWeekly ? '生成中...' : '產生本週總結'}
                   </button>
+                  {/* 暫時隱藏「更新跨日洞察」按鈕，之後可能恢復
                   <button
                     onClick={handleGenerateInsights}
                     disabled={generatingInsights}
@@ -334,6 +335,7 @@ const CaregiverElderDetail: React.FC = () => {
                     {generatingInsights ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
                     {generatingInsights ? '分析中...' : '更新跨日洞察'}
                   </button>
+                  */}
                 </div>
 
                 {/* 摘要區塊 */}
