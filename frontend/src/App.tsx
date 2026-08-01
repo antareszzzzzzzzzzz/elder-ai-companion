@@ -62,6 +62,8 @@ const App: React.FC = () => {
       ) : (
         <>
           <Route path="/" element={<CaregiverDashboard />} />
+          <Route path="/chat" element={<ElderlyDashboard />} />
+          <Route path="/profile" element={<ElderProfilePage />} />
           <Route path="/elder/:accountId" element={<CaregiverElderDetail />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </>

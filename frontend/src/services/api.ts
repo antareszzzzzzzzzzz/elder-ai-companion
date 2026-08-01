@@ -162,7 +162,9 @@ export const summaryApi = {
 /** 追蹤相關 */
 export const followApi = {
   getMyFollowing: () => api.get<any[]>('/api/follow/my-following'),
+  getMyFollowers: () => api.get<any[]>('/api/follow/my-followers'),
   getPendingRequests: () => api.get<any[]>('/api/follow/pending-requests'),
   approve: (followId: string) => api.post('/api/follow/approve', { follow_id: followId }),
   reject: (followId: string) => api.post('/api/follow/reject', { follow_id: followId }),
+  remove: (followId: string) => api.post('/api/follow/remove', { follow_id: followId }),
 };

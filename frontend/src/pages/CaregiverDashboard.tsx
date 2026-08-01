@@ -1,21 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { useMockData } from '../store/MockDataContext';
 import { useNavigate } from 'react-router-dom';
-import { Plus, User, LogOut, ArrowRight, HeartPulse, UserPlus, X, Repeat, Loader2 } from 'lucide-react';
+import { Plus, User, LogOut, ArrowRight, HeartPulse, UserPlus, X, MessageSquare, Loader2, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { followApi } from '../services/api';
 
 const CaregiverDashboard: React.FC = () => {
-  const { user, followingElders, logout, switchRole, bindElderViaApi, refreshFollowing } = useMockData();
+  const { user, followingElders, logout, bindElderViaApi, refreshFollowing } = useMockData();
   const navigate = useNavigate();
   const [showBindModal, setShowBindModal] = useState(false);
   const [bindUsername, setBindUsername] = useState('');
   const [bindCode, setBindCode] = useState('');
   const [bindError, setBindError] = useState('');
   const [bindLoading, setBindLoading] = useState(false);
+  const [removeLoading, setRemoveLoading] = useState<string | null>(null);
 
-  // 頁面載入時確保追蹤列表是最新的
+  // 頁面載入時確保追蹤列表是最新的，並每 5 秒輪詢
   useEffect(() => {
     refreshFollowing();
+    const interval = setInterval(refreshFollowing, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleBind = async (e: React.FormEvent) => {
@@ -40,6 +44,20 @@ const CaregiverDashboard: React.FC = () => {
     }
   };
 
+  const handleRemoveFollow = async (e: React.MouseEvent, followId: string) => {
+    e.stopPropagation();
+    if (!confirm('確定要取消追蹤此家人嗎？')) return;
+    setRemoveLoading(followId);
+    try {
+      await followApi.remove(followId);
+      await refreshFollowing();
+    } catch (err) {
+      console.error('Failed to remove follow:', err);
+    } finally {
+      setRemoveLoading(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50/50 pb-20">
       <header className="bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-md sticky top-0 z-20">
@@ -50,8 +68,8 @@ const CaregiverDashboard: React.FC = () => {
           </div>
           <div className="flex items-center gap-4">
             <span className="font-medium text-teal-50 mr-2">歡迎，{user?.name}</span>
-            <button onClick={switchRole} className="flex items-center gap-2 text-teal-100 hover:text-white transition-colors bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg font-semibold" title="切換為長輩角色">
-              <Repeat className="w-4 h-4" /> 切換角色
+            <button onClick={() => navigate('/chat')} className="flex items-center gap-2 text-teal-100 hover:text-white transition-colors bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg font-semibold" title="回到聊天">
+              <MessageSquare className="w-4 h-4" /> 回到聊天
             </button>
             <button onClick={logout} className="flex items-center gap-2 text-teal-100 hover:text-white transition-colors bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg font-semibold">
               <LogOut className="w-4 h-4" /> 登出
@@ -99,8 +117,16 @@ const CaregiverDashboard: React.FC = () => {
                 animate={{ opacity: 1, scale: 1 }}
                 key={elder.follow_id}
                 onClick={() => navigate(`/elder/${elder.account_id}`)}
-                className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 hover:shadow-md hover:border-teal-200 transition-all cursor-pointer group"
+                className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 hover:shadow-md hover:border-teal-200 transition-all cursor-pointer group relative"
               >
+                <button
+                  onClick={(e) => handleRemoveFollow(e, elder.follow_id)}
+                  disabled={removeLoading === elder.follow_id}
+                  className="absolute top-4 right-4 p-2 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                  title="取消追蹤"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
                 <div className="flex items-center gap-4 mb-6">
                   <div className="w-16 h-16 bg-gradient-to-br from-teal-400 to-emerald-500 rounded-2xl text-white flex items-center justify-center shadow-inner text-2xl font-bold">
                     {(elder.display_name || '?')[0]}

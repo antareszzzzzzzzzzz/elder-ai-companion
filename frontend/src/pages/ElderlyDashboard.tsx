@@ -5,6 +5,7 @@ import { Bot, Bell, Volume2, VolumeX, Mic, MicOff, Send, Settings, User as UserI
 import { AnimatePresence, motion } from 'framer-motion';
 import { chatApi, type ChatMessage, type ChatSession } from '../services/api';
 import { sttService, ttsService } from '../services/speech';
+import NotificationBell from '../components/NotificationBell';
 
 const ElderlyDashboard: React.FC = () => {
   const { user, switchRole } = useMockData();
@@ -203,11 +204,11 @@ const ElderlyDashboard: React.FC = () => {
                     查看個人資料
                   </button>
                   <button
-                    onClick={() => switchRole()}
+                    onClick={() => { user?.role === 'caregiver' ? navigate('/') : switchRole(); }}
                     className="w-full flex items-center gap-3 px-4 py-3 hover:bg-teal-50 rounded-lg transition-colors text-lg font-semibold text-slate-700"
                   >
                     <Repeat className="w-5 h-5 text-teal-600" />
-                    切換照護者角色
+                    {user?.role === 'caregiver' ? '回到管理中心' : '切換照護者角色'}
                   </button>
                 </div>
               </motion.div>
@@ -265,15 +266,18 @@ const ElderlyDashboard: React.FC = () => {
       <main className="flex-1 flex flex-col h-full bg-white relative">
         <header className="bg-emerald-100 border-b-2 border-emerald-200 px-6 py-4 flex justify-between items-center shadow-sm z-0">
           <h2 className="text-2xl font-bold text-emerald-800">今天想聊點什麼呢，{user?.name}？</h2>
-          <button
-            onClick={() => setTtsEnabled(!ttsEnabled)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-colors ${
-              ttsEnabled ? 'bg-white/50 text-emerald-700' : 'bg-slate-200 text-slate-500'
-            }`}
-          >
-            {ttsEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
-            {ttsEnabled ? '語音朗讀已開啟' : '語音朗讀已關閉'}
-          </button>
+          <div className="flex items-center gap-3">
+            <NotificationBell />
+            <button
+              onClick={() => setTtsEnabled(!ttsEnabled)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-colors ${
+                ttsEnabled ? 'bg-white/50 text-emerald-700' : 'bg-slate-200 text-slate-500'
+              }`}
+            >
+              {ttsEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+              {ttsEnabled ? '語音朗讀已開啟' : '語音朗讀已關閉'}
+            </button>
+          </div>
         </header>
 
         <div className="flex-1 p-6 overflow-y-auto space-y-6 chat-scroll bg-slate-50/50">

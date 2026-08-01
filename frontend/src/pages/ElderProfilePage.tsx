@@ -111,6 +111,57 @@ const PendingFollowRequests: React.FC = () => {
   );
 };
 
+/** 我的追蹤者管理子組件 */
+const MyFollowers: React.FC = () => {
+  const [followers, setFollowers] = useState<any[]>([]);
+  const [removeLoadingId, setRemoveLoadingId] = useState<string | null>(null);
+
+  useEffect(() => { loadFollowers(); }, []);
+
+  const loadFollowers = async () => {
+    try {
+      const data = await followApi.getMyFollowers();
+      setFollowers(data);
+    } catch {}
+  };
+
+  const handleRemove = async (followId: string) => {
+    if (!confirm('確定要移除此追蹤者嗎？對方將無法再查看您的健康狀況。')) return;
+    setRemoveLoadingId(followId);
+    try {
+      await followApi.remove(followId);
+      setFollowers(prev => prev.filter(f => f.follow_id !== followId));
+    } catch (err) { console.error(err); }
+    finally { setRemoveLoadingId(null); }
+  };
+
+  if (followers.length === 0) return null;
+
+  return (
+    <motion.section initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.07 }}
+      className="bg-white rounded-3xl p-8 shadow-sm border border-teal-100">
+      <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-3 mb-4">
+        <UserIcon className="w-7 h-7 text-teal-500" /> 我的追蹤者
+      </h2>
+      <p className="text-slate-500 mb-4">以下家人正在追蹤您的健康狀況。</p>
+      <div className="space-y-3">
+        {followers.map(f => (
+          <div key={f.follow_id} className="flex items-center justify-between p-4 bg-teal-50 rounded-xl border border-teal-200">
+            <div>
+              <p className="font-bold text-slate-800">{f.display_name || '未知'}</p>
+              <p className="text-sm text-slate-500">@{f.account_handle || '—'}</p>
+            </div>
+            <button onClick={() => handleRemove(f.follow_id)} disabled={removeLoadingId === f.follow_id}
+              className="flex items-center gap-1 px-4 py-2 bg-red-50 hover:bg-red-100 disabled:bg-red-50/50 text-red-500 hover:text-red-600 rounded-lg font-bold text-sm border border-red-200 transition-colors">
+              <Trash2 className="w-4 h-4" /> 移除
+            </button>
+          </div>
+        ))}
+      </div>
+    </motion.section>
+  );
+};
+
 const ElderProfilePage: React.FC = () => {
   const { user } = useMockData();
   const navigate = useNavigate();
@@ -411,6 +462,9 @@ const ElderProfilePage: React.FC = () => {
 
         {/* ===== 追蹤請求核准 ===== */}
         <PendingFollowRequests />
+
+        {/* ===== 我的追蹤者管理 ===== */}
+        <MyFollowers />
 
         {/* ===== 記憶卡片 ===== */}
         <motion.section initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100">

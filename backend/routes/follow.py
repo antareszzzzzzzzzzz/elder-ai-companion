@@ -258,3 +258,33 @@ def pending_requests():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@follow_bp.route("/remove", methods=["POST"])
+@require_auth
+def remove_follow():
+    """Remove a follow relationship. Either the follower or followee can remove it."""
+    data = request.get_json()
+    if not data or not data.get("follow_id"):
+        return jsonify({"error": "follow_id is required"}), 400
+
+    follow_id = data["follow_id"]
+
+    try:
+        response = follows_table.get_item(Key={"follow_id": follow_id})
+        if "Item" not in response:
+            return jsonify({"error": "Follow relationship not found"}), 404
+
+        item = response["Item"]
+
+        # Only follower or followee can remove
+        if item["follower_id"] != g.user_id and item["followee_id"] != g.user_id:
+            return jsonify({"error": "Not authorized"}), 403
+
+        # Delete the follow record
+        follows_table.delete_item(Key={"follow_id": follow_id})
+
+        return jsonify({"follow_id": follow_id, "status": "removed"})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
