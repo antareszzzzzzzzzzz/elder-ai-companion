@@ -15,8 +15,14 @@ def invoke_bedrock(system_prompt: str, user_message: str, max_tokens: int = 2048
     """Invoke Bedrock model with system prompt and user message."""
     model_id = Config.BEDROCK_MODEL_ID
     bedrock_logger.info(f"Invoking model={model_id}, max_tokens={max_tokens}, user_msg_len={len(user_message)}")
-    bedrock_logger.debug(f"System prompt (first 200 chars): {system_prompt[:200]}...")
-    bedrock_logger.debug(f"User message: {user_message[:300]}")
+    bedrock_logger.debug(
+        "===== SYSTEM PROMPT (full, %d chars) =====\n%s\n===== END SYSTEM PROMPT =====",
+        len(system_prompt), system_prompt
+    )
+    bedrock_logger.debug(
+        "===== USER MESSAGE (full, %d chars) =====\n%s\n===== END USER MESSAGE =====",
+        len(user_message), user_message
+    )
 
     # Build request body based on model type
     if "nova" in model_id.lower():
@@ -78,7 +84,10 @@ def invoke_bedrock(system_prompt: str, user_message: str, max_tokens: int = 2048
             result_text = response_body["content"][0]["text"]
 
     bedrock_logger.info(f"Bedrock response received, length={len(result_text)}")
-    bedrock_logger.debug(f"Response (first 200 chars): {result_text[:200]}")
+    bedrock_logger.debug(
+        "===== RESPONSE (full, %d chars) =====\n%s\n===== END RESPONSE =====",
+        len(result_text), result_text
+    )
     return result_text
 
 

@@ -1,9 +1,9 @@
-import requests
 import base64
 from datetime import datetime, timezone, timedelta
 from flask import Blueprint, request, jsonify, redirect
 from config import Config
 from services.dynamodb import accounts_table
+from services.http import session as http_session, DEFAULT_TIMEOUT
 from middleware.auth import require_auth, verify_token
 from services.logger import auth_logger
 from flask import g
@@ -54,7 +54,16 @@ def callback():
         auth_header = base64.b64encode(auth_string.encode()).decode()
         headers["Authorization"] = f"Basic {auth_header}"
 
-    response = requests.post(token_url, headers=headers, data=data)
+    try:
+        response = http_session.post(
+            token_url, headers=headers, data=data, timeout=DEFAULT_TIMEOUT
+        )
+    except Exception as e:
+        auth_logger.error(f"Cognito token endpoint unreachable: {type(e).__name__}: {e}")
+        return jsonify({
+            "error": "Cannot reach Cognito token endpoint",
+            "detail": str(e)
+        }), 502
 
     if response.status_code != 200:
         auth_logger.error(f"Cognito token exchange failed: HTTP {response.status_code} — {response.text[:300]}")

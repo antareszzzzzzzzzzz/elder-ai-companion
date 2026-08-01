@@ -1,9 +1,9 @@
 import json
-import requests
 from functools import wraps
 from flask import request, jsonify, g
 from jose import jwt, JWTError
 from config import Config
+from services.http import session as http_session, DEFAULT_TIMEOUT
 
 # Cache JWKS keys
 _jwks_cache = None
@@ -13,7 +13,8 @@ def get_jwks():
     """Fetch and cache Cognito JWKS public keys."""
     global _jwks_cache
     if _jwks_cache is None:
-        response = requests.get(Config.COGNITO_JWKS_URL)
+        response = http_session.get(Config.COGNITO_JWKS_URL, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
         _jwks_cache = response.json()
     return _jwks_cache
 
