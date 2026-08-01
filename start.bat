@@ -7,14 +7,14 @@ echo.
 
 :: 啟動後端 (Flask API - port 5000)
 echo [1/3] 啟動後端 API...
-start "Backend API" cmd /k "cd /d %~dp0backend && call venv\Scripts\activate && python app.py"
+start "Backend API" cmd /k "cd /d %~dp0backend && python app.py"
 
 :: 等 2 秒讓後端先跑起來
 timeout /t 2 /nobreak >nul
 
 :: 啟動 STT 服務 (port 8001)
 echo [2/3] 啟動 STT 語音辨識服務...
-start "STT Service" cmd /k "cd /d %~dp0backend && call venv\Scripts\activate && cd stt_service && python main.py"
+start "STT Service" cmd /k "cd /d %~dp0backend\stt_service && python main.py"
 
 :: 等 1 秒
 timeout /t 1 /nobreak >nul
