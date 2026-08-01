@@ -149,7 +149,13 @@ const CaregiverElderDetail: React.FC = () => {
 
   // 記憶卡片資料
   const memoryCards = healthOverview
-    ? [...(healthOverview.medication_facts || []), ...(healthOverview.body_facts || [])].map((f) => ({
+    ? [
+        ...(healthOverview.medication_facts || []),
+        ...(healthOverview.body_facts || []),
+        ...(healthOverview.diet_facts || []),
+        ...(healthOverview.mood_facts || []),
+        ...(healthOverview.other_facts || []),
+      ].map((f) => ({
         id: f.fact_id,
         type: categoryToType(f.category),
         title: `${f.category}記憶卡`,

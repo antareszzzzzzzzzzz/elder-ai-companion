@@ -55,10 +55,16 @@ def get_health_overview(target_account_id):
         # Filter facts by category for health view
         medication_facts = [f for f in all_facts if f.get("category") == "用藥"]
         body_facts = [f for f in all_facts if f.get("category") in ["身體", "睡眠", "活動"]]
+        diet_facts = [f for f in all_facts if f.get("category") == "飲食"]
+        mood_facts = [f for f in all_facts if f.get("category") == "情緒"]
+        other_facts = [f for f in all_facts if f.get("category") == "其他"]
 
         # Sort by updated_at descending
         medication_facts.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
         body_facts.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+        diet_facts.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+        mood_facts.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+        other_facts.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
 
         return jsonify({
             "account_id": target_account_id,
@@ -67,6 +73,9 @@ def get_health_overview(target_account_id):
             "daily_summaries": summaries[:14],  # Last 14 days
             "medication_facts": medication_facts[:20],
             "body_facts": body_facts[:20],
+            "diet_facts": diet_facts[:20],
+            "mood_facts": mood_facts[:20],
+            "other_facts": other_facts[:20],
             "cross_day_insights": None  # Will be populated by generate endpoint
         })
 

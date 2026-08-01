@@ -179,7 +179,13 @@ const ElderProfilePage: React.FC = () => {
       }
       // 載入記憶卡片
       const overview = await healthApi.getOverview(pData.account_id);
-      const allFacts = [...(overview.medication_facts || []), ...(overview.body_facts || [])];
+      const allFacts = [
+        ...(overview.medication_facts || []),
+        ...(overview.body_facts || []),
+        ...(overview.diet_facts || []),
+        ...(overview.mood_facts || []),
+        ...(overview.other_facts || []),
+      ];
       if (allFacts.length > 0) setMemoryCards(allFacts.map(factToMemoryCard));
     } catch (err) {
       console.warn('API unavailable:', err);
