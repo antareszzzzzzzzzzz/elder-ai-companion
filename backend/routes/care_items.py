@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from flask import Blueprint, request, jsonify, g
 from middleware.auth import require_auth
-from services.dynamodb import facts_table, follows_table
+from services.dynamodb import facts_table, follows_table, accounts_table
 from services.logger import app_logger
 
 care_items_bp = Blueprint("care_items", __name__)
@@ -60,6 +60,21 @@ def get_care_items(target_account_id):
         items = response.get("Items", [])
         # Sort by updated_at descending
         items.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+
+        # Enrich with source_display_name
+        source_ids = set(item.get("source_account_id") for item in items if item.get("source_account_id"))
+        display_name_map = {}
+        for sid in source_ids:
+            try:
+                acc_resp = accounts_table.get_item(Key={"account_id": sid})
+                if "Item" in acc_resp:
+                    display_name_map[sid] = acc_resp["Item"].get("display_name", "未知")
+            except Exception:
+                display_name_map[sid] = "未知"
+
+        for item in items:
+            sid = item.get("source_account_id", "")
+            item["source_display_name"] = display_name_map.get(sid, "未知")
 
         return jsonify(items)
 
@@ -144,7 +159,17 @@ def delete_care_item(target_account_id, fact_id):
 
         # 確認權限：必須是建立者或被照護的長輩本人
         if item.get("source_account_id") != g.user_id and item.get("account_id") != g.user_id:
-            return jsonify({"error": "Permission denied"}), 403
+            # 查詢建立者的 display_name
+            creator_name = "未知"
+            creator_id = item.get("source_account_id", "")
+            if creator_id:
+                try:
+                    acc_resp = accounts_table.get_item(Key={"account_id": creator_id})
+                    if "Item" in acc_resp:
+                        creator_name = acc_resp["Item"].get("display_name", "未知")
+                except Exception:
+                    pass
+            return jsonify({"error": f"此提醒由照護者 {creator_name} 建立，只有建立者可以刪除。"}), 403
 
         # 刪除
         facts_table.delete_item(Key={"fact_id": fact_id})

@@ -332,9 +332,10 @@ const CaregiverElderDetail: React.FC = () => {
       // 先把 track 設為 false（停止 AI 提醒），再從 UI 移除
       await careItemsApi.deleteItem(accountId, factId);
       setCareItems(careItems.filter((r) => r.fact_id !== factId));
-    } catch (err) {
+    } catch (err: any) {
       console.error('Delete care item error:', err);
-      alert('刪除失敗，請稍後再試');
+      const message = err?.message || '刪除失敗，請稍後再試';
+      alert(message);
     }
   };
 
@@ -709,6 +710,9 @@ const CaregiverElderDetail: React.FC = () => {
                                       {item.require_confirmation ? '需確認回覆' : '提醒一次即可'}
                                     </span>
                                     <span className="text-xs text-amber-600 font-semibold">未獲回覆</span>
+                                    {item.source_display_name && (
+                                      <span className="text-xs text-slate-500 font-medium">新增者：{item.source_display_name}</span>
+                                    )}
                                   </div>
                                 </div>
                               </div>
@@ -743,7 +747,12 @@ const CaregiverElderDetail: React.FC = () => {
                           {careItems.filter((r) => !r.track).slice(0, 10).map((item) => (
                             <div key={item.fact_id} className="flex items-center justify-between p-4 rounded-xl border-2 border-slate-100 bg-slate-50 opacity-60 transition-all">
                               <div className="flex items-center gap-3 flex-1">
-                                <span className="text-lg font-semibold text-slate-500 line-through">{item.content}</span>
+                                <div className="flex flex-col">
+                                  <span className="text-lg font-semibold text-slate-500 line-through">{item.content}</span>
+                                  {item.source_display_name && (
+                                    <span className="text-xs text-slate-400 font-medium mt-1">新增者：{item.source_display_name}</span>
+                                  )}
+                                </div>
                               </div>
                               <button onClick={() => removeReminder(item.fact_id)} className="p-2 text-slate-400 hover:text-red-500 transition-colors" title="刪除">
                                 <Trash2 className="w-5 h-5" />
