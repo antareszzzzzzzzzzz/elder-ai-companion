@@ -198,7 +198,7 @@ HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$CLOUDFRONT_URL/api/heal
 if [[ "$HEALTH_STATUS" == "200" ]]; then
   info "Health check 通過 ✓ (HTTP 200)"
 else
-  warn "Health check 回傳 HTTP $HEALTH_STATUS（ECS 可能仍在滾動更新中，請稍候再試）"
+  warn "Health check 回傳 HTTP ${HEALTH_STATUS}（ECS 可能仍在滾動更新中，請稍候再試）"
 fi
 
 # =============================================================================
