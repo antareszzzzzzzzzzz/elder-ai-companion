@@ -225,6 +225,7 @@ export interface CareItem {
   track: boolean;
   source: 'caregiver';
   source_account_id: string;
+  source_display_name?: string;
   require_confirmation: boolean;
   updated_at: string;
 }
