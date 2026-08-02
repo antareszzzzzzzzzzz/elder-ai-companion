@@ -167,120 +167,149 @@ def send_message():
         )
         chat_logger.info(f"AI response generated, length={len(ai_response)}")
 
-        # 5. SECOND Bedrock call: Generate memory operations
-        chat_logger.info("Bedrock call #2: generating memory operations...")
-        operations = generate_memory_operations(
-            facts=current_facts,
-            user_message=user_message,
-            ai_response=ai_response,
-            current_time=current_time,
-            caregiver_reminders=caregiver_reminders
-        )
-        chat_logger.info(f"Memory operations: {len(operations)} ops to execute")
+        # 5. Run memory processing and message persistence in the background.
+        # Capture the account ID now because Flask's g is request-scoped and cannot
+        # be accessed safely after this request returns.
+        account_id = g.user_id
 
-        # 6. Execute memory operations (code does the writing, not LLM)
-        memory_updates = []
-        for op in operations:
-            # track 欄位缺失時安全預設為 False，不讓格式問題擋掉整筆操作
-            track_flag = bool(op.get("track", False))
+        def process_memory_and_save_messages():
+            try:
+                # SECOND Bedrock call: Generate memory operations
+                chat_logger.info("Bedrock call #2: generating memory operations in background...")
+                operations = generate_memory_operations(
+                    facts=current_facts,
+                    user_message=user_message,
+                    ai_response=ai_response,
+                    current_time=current_time,
+                    caregiver_reminders=caregiver_reminders
+                )
+                chat_logger.info(f"Memory operations: {len(operations)} ops to execute")
 
-            if op["op"] == "add":
-                fact_id = str(uuid.uuid4())
-                facts_table.put_item(Item={
-                    "fact_id": fact_id,
-                    "account_id": g.user_id,
-                    "category": op["category"],
-                    "content": op["content"],
-                    "track": track_flag,
-                    "updated_at": current_time
+                # Execute memory operations (code does the writing, not LLM)
+                memory_updates = []
+                for op in operations:
+                    # track 欄位缺失時安全預設為 False，不讓格式問題擋掉整筆操作
+                    track_flag = bool(op.get("track", False))
+
+                    if op["op"] == "add":
+                        fact_id = str(uuid.uuid4())
+                        facts_table.put_item(Item={
+                            "fact_id": fact_id,
+                            "account_id": account_id,
+                            "category": op["category"],
+                            "content": op["content"],
+                            "track": track_flag,
+                            "updated_at": current_time
+                        })
+                        memory_updates.append({"op": "add", "fact_id": fact_id, "category": op["category"], "track": track_flag})
+                        chat_logger.info(f"  ADD fact: [{op['category']}] {op['content'][:50]} (track={track_flag})")
+
+                    elif op["op"] == "update":
+                        fact_id = op["id"]
+                        new_content = op["content"]
+
+                        # 安全檢查：id 必須在剛才餵進萃取 prompt 的清單中（防幻覺）
+                        if fact_id not in known_fact_ids:
+                            chat_logger.warning(f"  UPDATE rejected: fact {fact_id[:8]} not in known_fact_ids (possible hallucination)")
+                            continue
+
+                        # Get existing fact
+                        existing = facts_table.get_item(Key={"fact_id": fact_id})
+                        if "Item" in existing:
+                            old_content = existing["Item"]["content"]
+                            history_id = str(uuid.uuid4())
+
+                            # Atomic transaction: save history + update fact (含 track 欄位)
+                            try:
+                                dynamodb_client.transact_write_items(
+                                    TransactItems=[
+                                        {
+                                            "Put": {
+                                                "TableName": "FactHistory",
+                                                "Item": {
+                                                    "history_id": {"S": history_id},
+                                                    "fact_id": {"S": fact_id},
+                                                    "old_content": {"S": old_content},
+                                                    "replaced_at": {"S": current_time}
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "Update": {
+                                                "TableName": "Facts",
+                                                "Key": {"fact_id": {"S": fact_id}},
+                                                "UpdateExpression": "SET content = :c, updated_at = :t, track = :tr",
+                                                "ExpressionAttributeValues": {
+                                                    ":c": {"S": new_content},
+                                                    ":t": {"S": current_time},
+                                                    ":tr": {"BOOL": track_flag}
+                                                }
+                                            }
+                                        }
+                                    ]
+                                )
+                                memory_updates.append({"op": "update", "fact_id": fact_id, "track": track_flag})
+                                chat_logger.info(f"  UPDATE fact {fact_id[:8]}: '{old_content[:30]}' → '{new_content[:30]}' (track={track_flag})")
+                            except Exception as e:
+                                chat_logger.error(f"Transaction failed for fact update {fact_id[:8]}: {e}", exc_info=True)
+                        else:
+                            chat_logger.warning(f"  UPDATE skipped: fact {fact_id[:8]} not found in DB")
+
+                # Save messages to Messages table (含 extracted 旗標)
+                user_msg_id = str(uuid.uuid4())
+                assistant_msg_id = str(uuid.uuid4())
+
+                messages_table.put_item(Item={
+                    "message_id": user_msg_id,
+                    "session_id": session_id,
+                    "role": "user",
+                    "content": user_message,
+                    "extracted": True,
+                    "created_at": current_time
                 })
-                memory_updates.append({"op": "add", "fact_id": fact_id, "category": op["category"], "track": track_flag})
-                chat_logger.info(f"  ADD fact: [{op['category']}] {op['content'][:50]} (track={track_flag})")
 
-            elif op["op"] == "update":
-                fact_id = op["id"]
-                new_content = op["content"]
+                messages_table.put_item(Item={
+                    "message_id": assistant_msg_id,
+                    "session_id": session_id,
+                    "role": "assistant",
+                    "content": ai_response,
+                    "extracted": True,
+                    "created_at": _now_tw()
+                })
 
-                # 安全檢查：id 必須在剛才餵進萃取 prompt 的清單中（防幻覺）
-                if fact_id not in known_fact_ids:
-                    chat_logger.warning(f"  UPDATE rejected: fact {fact_id[:8]} not in known_fact_ids (possible hallucination)")
-                    continue
+                chat_logger.info(
+                    f"[{account_id[:8]}] Background memory processing complete: "
+                    f"session={session_id[:8]}, memory_ops={len(memory_updates)}"
+                )
+            except Exception as e:
+                chat_logger.error(
+                    f"[{account_id[:8]}] Background memory processing error: "
+                    f"{type(e).__name__}: {e}",
+                    exc_info=True
+                )
 
-                # Get existing fact
-                existing = facts_table.get_item(Key={"fact_id": fact_id})
-                if "Item" in existing:
-                    old_content = existing["Item"]["content"]
-                    history_id = str(uuid.uuid4())
+        # Call #2 now runs concurrently with Polly and may finish after the HTTP response.
+        from threading import Thread
+        Thread(
+            target=process_memory_and_save_messages,
+            name=f"memory-{session_id[:8]}",
+            daemon=True
+        ).start()
 
-                    # Atomic transaction: save history + update fact (含 track 欄位)
-                    try:
-                        dynamodb_client.transact_write_items(
-                            TransactItems=[
-                                {
-                                    "Put": {
-                                        "TableName": "FactHistory",
-                                        "Item": {
-                                            "history_id": {"S": history_id},
-                                            "fact_id": {"S": fact_id},
-                                            "old_content": {"S": old_content},
-                                            "replaced_at": {"S": current_time}
-                                        }
-                                    }
-                                },
-                                {
-                                    "Update": {
-                                        "TableName": "Facts",
-                                        "Key": {"fact_id": {"S": fact_id}},
-                                        "UpdateExpression": "SET content = :c, updated_at = :t, track = :tr",
-                                        "ExpressionAttributeValues": {
-                                            ":c": {"S": new_content},
-                                            ":t": {"S": current_time},
-                                            ":tr": {"BOOL": track_flag}
-                                        }
-                                    }
-                                }
-                            ]
-                        )
-                        memory_updates.append({"op": "update", "fact_id": fact_id, "track": track_flag})
-                        chat_logger.info(f"  UPDATE fact {fact_id[:8]}: '{old_content[:30]}' → '{new_content[:30]}' (track={track_flag})")
-                    except Exception as e:
-                        chat_logger.error(f"Transaction failed for fact update {fact_id[:8]}: {e}", exc_info=True)
-                else:
-                    chat_logger.warning(f"  UPDATE skipped: fact {fact_id[:8]} not found in DB")
-
-        # 7. Save messages to Messages table (含 extracted 旗標)
-        user_msg_id = str(uuid.uuid4())
-        assistant_msg_id = str(uuid.uuid4())
-
-        messages_table.put_item(Item={
-            "message_id": user_msg_id,
-            "session_id": session_id,
-            "role": "user",
-            "content": user_message,
-            "extracted": True,
-            "created_at": current_time
-        })
-
-        messages_table.put_item(Item={
-            "message_id": assistant_msg_id,
-            "session_id": session_id,
-            "role": "assistant",
-            "content": ai_response,
-            "extracted": True,
-            "created_at": _now_tw()
-        })
-
-        # 8. Generate TTS audio
+        # 6. Generate TTS audio without waiting for memory processing
         chat_logger.info("Generating TTS audio...")
         audio_base64 = synthesize_speech(ai_response)
 
-        chat_logger.info(f"[{g.user_id[:8]}] Request complete: session={session_id[:8]}, memory_ops={len(memory_updates)}, has_audio={'yes' if audio_base64 else 'no'}")
+        chat_logger.info(
+            f"[{account_id[:8]}] Request complete: session={session_id[:8]}, "
+            f"memory_ops=processing, has_audio={'yes' if audio_base64 else 'no'}"
+        )
 
         return jsonify({
             "session_id": session_id,
             "response": ai_response,
             "audio": audio_base64,
-            "memory_updates": memory_updates
+            "memory_updates": []
         })
 
     except Exception as e:
