@@ -633,21 +633,54 @@ const CaregiverElderDetail: React.FC = () => {
             {/* ========== 個人資料 Tab ========== */}
             {activeTab === 'profile' && (
               <div className="space-y-6">
-                <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 grid grid-cols-2 gap-6">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-400 uppercase">姓名</p>
-                    <p className="text-xl font-bold text-slate-800">{displayName}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-400 uppercase">帳號代碼</p>
-                    <p className="text-xl font-bold text-slate-800">@{elderInfo?.account_handle || '—'}</p>
-                  </div>
-                  {healthOverview && (
-                    <div className="col-span-2">
-                      <p className="text-sm font-semibold text-slate-400 uppercase">累計 AI 互動次數</p>
-                      <p className="text-xl font-bold text-teal-600">{healthOverview.interaction_count} 次</p>
+                <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100">
+                  <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                    <User className="w-6 h-6 text-teal-500" /> 基本資料
+                  </h3>
+                  <div className="grid grid-cols-2 gap-6">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-400 uppercase">姓名</p>
+                      <p className="text-xl font-bold text-slate-800">{displayName}</p>
                     </div>
-                  )}
+                    <div>
+                      <p className="text-sm font-semibold text-slate-400 uppercase">帳號代碼</p>
+                      <p className="text-xl font-bold text-slate-800">@{elderInfo?.account_handle || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-400 uppercase">性別</p>
+                      <p className="text-xl font-bold text-slate-800">{healthOverview?.gender || '未填寫'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-400 uppercase">出生年月日</p>
+                      <p className="text-xl font-bold text-slate-800">{healthOverview?.birth || '未填寫'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-400 uppercase">身高</p>
+                      <p className="text-xl font-bold text-slate-800">{healthOverview?.height ? `${healthOverview.height} cm` : '未填寫'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-400 uppercase">體重</p>
+                      <p className="text-xl font-bold text-slate-800">{healthOverview?.weight ? `${healthOverview.weight} kg` : '未填寫'}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-sm font-semibold text-slate-400 uppercase">慢性病</p>
+                      <p className="text-xl font-bold text-slate-800">{(() => { try { const arr = JSON.parse(healthOverview?.chronic_conditions || '[]'); return arr.length > 0 ? arr.join('、') : '未填寫'; } catch { return '未填寫'; } })()}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-sm font-semibold text-slate-400 uppercase">目前用藥</p>
+                      <p className="text-xl font-bold text-slate-800">{(() => { try { const arr = JSON.parse(healthOverview?.current_medications || '[]'); if (arr.length === 0) return '未填寫'; return arr.map((m: any) => typeof m === 'string' ? m : `${m.name || ''} ${m.dosage || ''} ${m.timing || ''}`).join('、'); } catch { return '未填寫'; } })()}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-sm font-semibold text-slate-400 uppercase">過敏</p>
+                      <p className="text-xl font-bold text-slate-800">{(() => { try { const arr = JSON.parse(healthOverview?.allergies || '[]'); return arr.length > 0 ? arr.join('、') : '未填寫'; } catch { return healthOverview?.allergies || '未填寫'; } })()}</p>
+                    </div>
+                    {healthOverview && (
+                      <div className="col-span-2">
+                        <p className="text-sm font-semibold text-slate-400 uppercase">累計 AI 互動次數</p>
+                        <p className="text-xl font-bold text-teal-600">{healthOverview.interaction_count} 次</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* 記憶足跡時間軸 */}
