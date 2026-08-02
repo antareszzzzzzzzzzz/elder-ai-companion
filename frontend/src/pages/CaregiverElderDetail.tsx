@@ -341,7 +341,7 @@ const CaregiverElderDetail: React.FC = () => {
         );
       } else if (data.email_enabled === false) {
         setPushMessage(
-          `已產生 ${data.date} 的摘要（${data.facts_count} 筆紀錄）。Email 通知未啟用，僅有站內通知。`
+          `已產生 ${data.date} 的摘要（${data.facts_count} 筆紀錄）。`
         );
       } else {
         setPushMessage(
@@ -819,7 +819,7 @@ const CaregiverElderDetail: React.FC = () => {
                             ) : (
                               <Send className="w-5 h-5" />
                             )}
-                            {pushingNow ? '推播中...' : '立即推播（測試）'}
+                            {pushingNow ? '推播中...' : '立即推播'}
                           </button>
                           <span className="text-xs text-slate-400">
                             不必等到設定時間，立刻產生今日摘要並寄出通知，可重複執行
