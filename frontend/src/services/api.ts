@@ -117,6 +117,13 @@ export interface HealthOverview {
   account_id: string;
   display_name: string;
   interaction_count: number;
+  gender?: string;
+  birth?: string;
+  height?: string;
+  weight?: string;
+  chronic_conditions?: string;
+  current_medications?: string;
+  allergies?: string;
   daily_summaries: DailySummary[];
   medication_facts: Fact[];
   body_facts: Fact[];
@@ -139,9 +146,14 @@ export interface ProfileData {
   avatar_url: string;
   age: number | null;
   gender: string | null;
+  birth: string;
+  height: string;
+  weight: string;
   chronic_conditions: string; // JSON string of array
   current_medications: string; // JSON string of array
   allergies: string; // JSON string of array
+  binding_code?: string;
+  personal_notes?: string;
   interaction_count: number;
   created_at: string;
 }
