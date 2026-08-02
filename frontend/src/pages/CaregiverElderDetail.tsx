@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useMockData } from '../store/MockDataContext';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, User, MessageSquare, BellRing, Trash2, Plus, Brain, Utensils, Pill, Activity, HeartPulse, Loader2, RefreshCw, Lightbulb, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
+import { ArrowLeft, User, MessageSquare, BellRing, Trash2, Plus, Brain, Utensils, Pill, Activity, HeartPulse, Loader2, RefreshCw, Lightbulb, ChevronLeft, ChevronRight, Clock, Send } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { healthApi, summaryApi, careItemsApi, type DailySummary, type HealthOverview, type CareItem } from '../services/api';
+import { healthApi, summaryApi, careItemsApi, followApi, type DailySummary, type HealthOverview, type CareItem } from '../services/api';
 
 // 保留暫時隱藏按鈕所需圖示，避免 TypeScript 將其視為未使用。
 void RefreshCw;
@@ -239,12 +239,93 @@ const CaregiverElderDetail: React.FC = () => {
   const [newQuestion, setNewQuestion] = useState('');
   const [newTrackMode, setNewTrackMode] = useState(true); // true = 需確認, false = 提醒一次即可
 
+  // 每日摘要自動推播排程
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduleTime, setScheduleTime] = useState('20:00');
+  const [loadingSchedule, setLoadingSchedule] = useState(false);
+  const [savingSchedule, setSavingSchedule] = useState(false);
+  const [scheduleMessage, setScheduleMessage] = useState<string | null>(null);
+  const [pushingNow, setPushingNow] = useState(false);
+  const [pushMessage, setPushMessage] = useState<string | null>(null);
+
   useEffect(() => {
     if (accountId) {
       loadHealthData();
       loadCareItems();
+      loadSchedule();
     }
   }, [accountId]);
+
+  const loadSchedule = async () => {
+    if (!accountId) return;
+    setLoadingSchedule(true);
+    try {
+      const data = await followApi.getSummarySchedule(accountId);
+      if (data.daily_summary_time) {
+        setScheduleEnabled(true);
+        setScheduleTime(data.daily_summary_time);
+      } else {
+        setScheduleEnabled(false);
+      }
+    } catch (err) {
+      console.warn('Summary schedule API error:', err);
+    } finally {
+      setLoadingSchedule(false);
+    }
+  };
+
+  const handlePushNow = async () => {
+    if (!accountId) return;
+    setPushingNow(true);
+    setPushMessage(null);
+    try {
+      const data = await summaryApi.pushNow(accountId);
+
+      if (data.message) {
+        setPushMessage(data.message);
+      } else if (data.recipients && data.recipients.length > 0) {
+        setPushMessage(
+          `已產生 ${data.date} 的摘要（${data.facts_count} 筆紀錄），並寄送至 ${data.recipients.join('、')}`
+        );
+      } else if (data.email_enabled === false) {
+        setPushMessage(
+          `已產生 ${data.date} 的摘要（${data.facts_count} 筆紀錄）。Email 通知未啟用，僅有站內通知。`
+        );
+      } else {
+        setPushMessage(
+          `已產生 ${data.date} 的摘要（${data.facts_count} 筆紀錄），但沒有成功寄出信件，請查看後端 log。`
+        );
+      }
+
+      // 重新載入摘要清單，讓新產生的摘要立即顯示
+      await loadHealthData();
+    } catch (err: any) {
+      setPushMessage(err?.message || '推播失敗，請稍後再試');
+    } finally {
+      setPushingNow(false);
+    }
+  };
+
+  const handleSaveSchedule = async () => {
+    if (!accountId) return;
+    setSavingSchedule(true);
+    setScheduleMessage(null);
+    try {
+      const data = await followApi.setSummarySchedule(
+        accountId,
+        scheduleEnabled ? scheduleTime : null
+      );
+      setScheduleMessage(
+        data.daily_summary_time
+          ? `已設定：每天 ${data.daily_summary_time} 自動產生每日摘要`
+          : '已關閉自動推播'
+      );
+    } catch (err: any) {
+      setScheduleMessage(err?.message || '設定失敗，請稍後再試');
+    } finally {
+      setSavingSchedule(false);
+    }
+  };
 
   const loadCareItems = async () => {
     if (!accountId) return;
@@ -289,6 +370,13 @@ const CaregiverElderDetail: React.FC = () => {
       setGeneratingInsights(false);
     }
   };
+  void handleGenerateInsights;
+
+  // 跨日洞察的觸發按鈕目前被註解停用，但 state 與 handler 保留以便日後恢復。
+  // 這裡明確標記為「刻意未使用」，避免 tsc 的 noUnusedLocals 讓 build 失敗。
+  // 恢復按鈕後可直接刪掉這三行。
+  void RefreshCw;
+  void generatingInsights;
   void handleGenerateInsights;
 
   const handleGenerateSummary = async () => {
@@ -536,6 +624,120 @@ const CaregiverElderDetail: React.FC = () => {
                     <p className="text-amber-800 text-lg leading-relaxed">{insights}</p>
                   </motion.div>
                 )}
+
+                {/* 自動推播每日摘要設定 */}
+                <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100">
+                  <div className="mb-5">
+                    <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                      <Clock className="w-6 h-6 text-teal-500" /> 自動推播每日摘要
+                    </h3>
+                    <p className="text-slate-500 mt-1">
+                      設定時間後，系統會在每天該時間自動產生 {displayName} 的每日摘要，並在通知鈴鐺提醒您。
+                    </p>
+                  </div>
+
+                  {loadingSchedule ? (
+                    <div className="flex items-center py-4">
+                      <Loader2 className="w-5 h-5 text-teal-500 animate-spin" />
+                      <span className="ml-2 text-slate-500">載入設定中...</span>
+                    </div>
+                  ) : (
+                    <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
+                      <div className="flex items-center gap-3 mb-5">
+                        <input
+                          id="schedule-enabled"
+                          type="checkbox"
+                          checked={scheduleEnabled}
+                          onChange={(e) => {
+                            setScheduleEnabled(e.target.checked);
+                            setScheduleMessage(null);
+                          }}
+                          className="w-5 h-5 rounded border-slate-300 text-teal-600 focus:ring-4 focus:ring-teal-100 cursor-pointer"
+                        />
+                        <label
+                          htmlFor="schedule-enabled"
+                          className="text-lg font-semibold text-slate-700 cursor-pointer"
+                        >
+                          啟用自動推播
+                        </label>
+                      </div>
+
+                      <div className="flex flex-wrap items-end gap-4">
+                        <div>
+                          <label
+                            htmlFor="schedule-time"
+                            className="block text-sm font-semibold text-slate-600 mb-2"
+                          >
+                            推播時間（台灣時間）
+                          </label>
+                          <input
+                            id="schedule-time"
+                            type="time"
+                            value={scheduleTime}
+                            disabled={!scheduleEnabled}
+                            onChange={(e) => {
+                              setScheduleTime(e.target.value);
+                              setScheduleMessage(null);
+                            }}
+                            className="border border-slate-300 rounded-xl px-4 py-3 text-lg focus:outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-50 disabled:bg-slate-100 disabled:text-slate-400"
+                          />
+                        </div>
+
+                        <button
+                          onClick={handleSaveSchedule}
+                          disabled={savingSchedule || (scheduleEnabled && !scheduleTime)}
+                          className="flex items-center gap-2 px-6 py-3 bg-teal-600 hover:bg-teal-700 disabled:bg-teal-300 text-white rounded-xl font-bold transition-all shadow-md"
+                        >
+                          {savingSchedule ? (
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                          ) : (
+                            <Clock className="w-5 h-5" />
+                          )}
+                          {savingSchedule ? '儲存中...' : '儲存設定'}
+                        </button>
+                      </div>
+
+                      {scheduleMessage && (
+                        <p className="mt-4 text-sm font-semibold text-teal-700" role="status">
+                          {scheduleMessage}
+                        </p>
+                      )}
+
+                      <p className="mt-4 text-xs text-slate-400 leading-relaxed">
+                        若伺服器在設定時間點未啟動，之後啟動時會自動補產生當天摘要。
+                        平時同一天只會產生一次；每次儲存設定後會允許重新產生一次，
+                        方便確認設定是否生效。
+                      </p>
+
+                      {/* 立即推播：不受「當天已有摘要」限制，方便展示與測試 */}
+                      <div className="mt-5 pt-5 border-t border-slate-200">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <button
+                            onClick={handlePushNow}
+                            disabled={pushingNow}
+                            className="flex items-center gap-2 px-5 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white rounded-xl font-bold transition-all shadow-md"
+                          >
+                            {pushingNow ? (
+                              <Loader2 className="w-5 h-5 animate-spin" />
+                            ) : (
+                              <Send className="w-5 h-5" />
+                            )}
+                            {pushingNow ? '推播中...' : '立即推播（測試）'}
+                          </button>
+                          <span className="text-xs text-slate-400">
+                            不必等到設定時間，立刻產生今日摘要並寄出通知，可重複執行
+                          </span>
+                        </div>
+
+                        {pushMessage && (
+                          <p className="mt-3 text-sm font-semibold text-amber-700" role="status">
+                            {pushMessage}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 {/* 操作按鈕 */}
                 <div className="flex flex-wrap gap-3">

@@ -23,6 +23,16 @@ class Config:
     # DynamoDB
     DYNAMODB_REGION = os.getenv("DYNAMODB_REGION", "us-east-1")
 
+    # SES（每日摘要 email 通知）
+    # SES_SENDER_EMAIL 必須是已在 SES 驗證過的寄件地址，未設定則不寄信。
+    # 沙箱模式下收件地址也必須先驗證。
+    SES_SENDER_EMAIL = os.getenv("SES_SENDER_EMAIL", "").strip()
+    # 收件匣上顯示的寄件者名稱（非 ASCII 會自動做 RFC 2047 編碼）
+    SES_SENDER_NAME = os.getenv("SES_SENDER_NAME", "智慧長照陪伴系統").strip()
+    SES_REGION = os.getenv("SES_REGION", AWS_REGION)
+    # 設成 "false" 可在不動 SES_SENDER_EMAIL 的情況下暫時停用寄信
+    SES_ENABLED = os.getenv("SES_ENABLED", "true").strip().lower() != "false"
+
     # Frontend
     FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 

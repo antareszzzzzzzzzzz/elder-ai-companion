@@ -69,8 +69,19 @@ def create_session():
 @chat_bp.route("/sessions/<session_id>/messages", methods=["GET"])
 @require_auth
 def get_messages(session_id):
-    """Get all messages in a session."""
+    """Get all messages in a session. Caller must own the session."""
     try:
+        # 先確認這個 session 屬於目前登入者，否則只憑 session_id 就能讀到別人的對話
+        session_resp = sessions_table.get_item(Key={"session_id": session_id})
+        session = session_resp.get("Item")
+        if not session:
+            return jsonify({"error": "Session not found"}), 404
+        if session.get("account_id") != g.user_id:
+            chat_logger.warning(
+                f"[{g.user_id[:8]}] 嘗試讀取不屬於自己的 session {session_id[:8]}，已拒絕"
+            )
+            return jsonify({"error": "Not authorized"}), 403
+
         response = messages_table.scan(
             FilterExpression="session_id = :sid",
             ExpressionAttributeValues={":sid": session_id}

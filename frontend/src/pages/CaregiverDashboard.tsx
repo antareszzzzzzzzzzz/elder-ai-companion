@@ -3,6 +3,7 @@ import { useMockData } from '../store/MockDataContext';
 import { useNavigate } from 'react-router-dom';
 import { Plus, LogOut, ArrowRight, HeartPulse, UserPlus, X, MessageSquare, Loader2, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import NotificationBell from '../components/NotificationBell';
 import { followApi } from '../services/api';
 
 const CaregiverDashboard: React.FC = () => {
@@ -68,6 +69,7 @@ const CaregiverDashboard: React.FC = () => {
           </div>
           <div className="flex items-center gap-4">
             <span className="font-medium text-teal-50 mr-2">歡迎，{user?.name}</span>
+            <NotificationBell onDark />
             <button onClick={() => navigate('/')} className="flex items-center gap-2 text-teal-100 hover:text-white transition-colors bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg font-semibold" title="回到聊天">
               <MessageSquare className="w-4 h-4" /> 回到聊天
             </button>
