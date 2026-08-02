@@ -117,6 +117,13 @@ export interface HealthOverview {
   account_id: string;
   display_name: string;
   interaction_count: number;
+  gender?: string;
+  birth?: string;
+  height?: string;
+  weight?: string;
+  chronic_conditions?: string;
+  current_medications?: string;
+  allergies?: string;
   daily_summaries: DailySummary[];
   medication_facts: Fact[];
   body_facts: Fact[];

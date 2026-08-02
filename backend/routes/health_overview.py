@@ -70,6 +70,13 @@ def get_health_overview(target_account_id):
             "account_id": target_account_id,
             "display_name": account.get("display_name", ""),
             "interaction_count": account.get("interaction_count", 0),
+            "gender": account.get("gender", ""),
+            "birth": account.get("birth", ""),
+            "height": account.get("height", ""),
+            "weight": account.get("weight", ""),
+            "chronic_conditions": account.get("chronic_conditions", "[]"),
+            "current_medications": account.get("current_medications", "[]"),
+            "allergies": account.get("allergies", "[]"),
             "daily_summaries": summaries[:14],  # Last 14 days
             "medication_facts": medication_facts[:20],
             "body_facts": body_facts[:20],
