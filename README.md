@@ -46,7 +46,7 @@
 |------|------|
 | 前端 | React 19 + TypeScript + Vite + TailwindCSS 4 + Framer Motion |
 | 後端 | Python Flask + flask-cors |
-| AI | Amazon Bedrock (Nova Lite / Claude) |
+| AI | Amazon Bedrock（Anthropic Claude Sonnet 4.5，`us.anthropic.claude-sonnet-4-5-20250929-v1:0`） |
 | 語音合成 | Amazon Polly (Neural, Zhiyu) |
 | 語音辨識 | AWS Transcribe (WebSocket 串流) + Web Speech API fallback |
 | 資料庫 | Amazon DynamoDB (8 tables) |
