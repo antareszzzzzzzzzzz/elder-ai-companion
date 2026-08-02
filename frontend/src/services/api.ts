@@ -139,9 +139,14 @@ export interface ProfileData {
   avatar_url: string;
   age: number | null;
   gender: string | null;
+  birth: string;
+  height: string;
+  weight: string;
   chronic_conditions: string; // JSON string of array
   current_medications: string; // JSON string of array
   allergies: string; // JSON string of array
+  binding_code?: string;
+  personal_notes?: string;
   interaction_count: number;
   created_at: string;
 }

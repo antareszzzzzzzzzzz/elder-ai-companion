@@ -13,6 +13,34 @@ def _generate_binding_code() -> str:
     return ''.join(random.choices(string.digits, k=6))
 
 
+def _normalize_chronic_conditions(value) -> str:
+    """Validate chronic conditions and store them as a normalized JSON string."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise ValueError("chronic_conditions must be a valid JSON array") from exc
+
+    if not isinstance(value, list):
+        raise ValueError("chronic_conditions must be an array")
+    if len(value) > 20:
+        raise ValueError("chronic_conditions cannot contain more than 20 items")
+
+    normalized = []
+    for condition in value:
+        if not isinstance(condition, str):
+            raise ValueError("each chronic condition must be a string")
+        condition = condition.strip()
+        if not condition:
+            continue
+        if len(condition) > 100:
+            raise ValueError("each chronic condition must be 100 characters or fewer")
+        if condition not in normalized:
+            normalized.append(condition)
+
+    return json.dumps(normalized, ensure_ascii=False)
+
+
 @profile_bp.route("/", methods=["GET"])
 @require_auth
 def get_profile():
@@ -21,7 +49,11 @@ def get_profile():
         response = accounts_table.get_item(Key={"account_id": g.user_id})
         if "Item" not in response:
             return jsonify({"error": "Profile not found"}), 404
-        return jsonify(response["Item"])
+        profile = response["Item"]
+        # Backward compatibility for accounts created before these fields existed.
+        profile.setdefault("gender", None)
+        profile.setdefault("chronic_conditions", "[]")
+        return jsonify(profile)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -31,8 +63,26 @@ def get_profile():
 def update_profile():
     """Update current user's profile."""
     data = request.get_json()
-    if not data:
+    if not isinstance(data, dict) or not data:
         return jsonify({"error": "No data provided"}), 400
+
+    try:
+        if "chronic_conditions" in data:
+            data["chronic_conditions"] = _normalize_chronic_conditions(
+                data["chronic_conditions"]
+            )
+
+        if "gender" in data:
+            gender = data["gender"]
+            if gender is not None and not isinstance(gender, str):
+                raise ValueError("gender must be a string or null")
+            if isinstance(gender, str):
+                gender = gender.strip() or None
+                if gender and len(gender) > 50:
+                    raise ValueError("gender must be 50 characters or fewer")
+            data["gender"] = gender
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
 
     # Allowed fields to update
     allowed_fields = [

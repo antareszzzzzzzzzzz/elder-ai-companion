@@ -48,7 +48,17 @@ function factToMemoryCard(fact: Fact): MemoryCard {
   };
 }
 
-const CHRONIC_OPTIONS = ['高血壓', '糖尿病', '心臟病', '骨質疏鬆', '關節炎', '失智症', '中風', '腎臟病', '其他'];
+const CHRONIC_OPTIONS = ['高血壓', '糖尿病', '心臟病', '骨質疏鬆', '關節炎', '失智症', '中風', '腎臟病'];
+const GENDER_OPTIONS = ['男性', '女性', '不透露'];
+
+function parseCustomConditions(value: string): string[] {
+  return Array.from(new Set(
+    value
+      .split(/[、,，;；\n]+/)
+      .map(item => item.trim())
+      .filter(Boolean),
+  ));
+}
 
 /** 追蹤請求核准子組件 */
 const PendingFollowRequests: React.FC = () => {
@@ -451,14 +461,20 @@ const ElderProfilePage: React.FC = () => {
 
   // 基本資料
   const [isEditing, setIsEditing] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState('');
   const [displayName, setDisplayName] = useState(user?.name ?? '');
   const [accountHandle, setAccountHandle] = useState(user?.username ?? '');
   const [birth, setBirth] = useState('');
   const [height, setHeight] = useState('');
   const [weight, setWeight] = useState('');
+  const [genderChoice, setGenderChoice] = useState('');
+  const [customGender, setCustomGender] = useState('');
 
   // 健康資料
   const [chronicConditions, setChronicConditions] = useState<string[]>([]);
+  const [customChronicEnabled, setCustomChronicEnabled] = useState(false);
+  const [customChronicText, setCustomChronicText] = useState('');
   const [medications, setMedications] = useState<Medication[]>([]);
   const [allergies, setAllergies] = useState('');
 
@@ -488,21 +504,52 @@ const ElderProfilePage: React.FC = () => {
       const pData = await profileApi.get();
       setDisplayName(pData.display_name || user.name);
       setAccountHandle(pData.account_handle || user.username);
-      if ((pData as any).birth) setBirth((pData as any).birth);
-      if ((pData as any).height) setHeight((pData as any).height);
-      if ((pData as any).weight) setWeight((pData as any).weight);
-      if ((pData as any).personal_notes) setPersonalNotes((pData as any).personal_notes);
-      if ((pData as any).binding_code) {
-        setBindingCode((pData as any).binding_code);
+      setBirth(pData.birth || '');
+      setHeight(pData.height || '');
+      setWeight(pData.weight || '');
+      setPersonalNotes(pData.personal_notes || '');
+
+      const loadedGender = (pData.gender || '').trim();
+      if (!loadedGender) {
+        setGenderChoice('');
+        setCustomGender('');
+      } else if (GENDER_OPTIONS.includes(loadedGender)) {
+        setGenderChoice(loadedGender);
+        setCustomGender('');
+      } else {
+        setGenderChoice('自訂');
+        setCustomGender(loadedGender);
+      }
+
+      if (pData.binding_code) {
+        setBindingCode(pData.binding_code);
       } else {
         const codeData = await api.get<{ binding_code: string }>('/api/profile/binding-code');
         setBindingCode(codeData.binding_code);
       }
-      // 解析健康資料
+
+      // 解析健康資料，並將固定疾病與自訂疾病分開呈現。
       try {
-        const cc = JSON.parse(pData.chronic_conditions || '[]');
-        if (Array.isArray(cc)) setChronicConditions(cc);
-      } catch {}
+        const parsedConditions = JSON.parse(pData.chronic_conditions || '[]');
+        if (!Array.isArray(parsedConditions)) throw new Error('慢性病資料不是陣列');
+        const conditions = parsedConditions
+          .filter((condition): condition is string => typeof condition === 'string')
+          .map(condition => condition.trim())
+          .filter(Boolean);
+        const fixedConditions = conditions.filter(condition => CHRONIC_OPTIONS.includes(condition));
+        const customConditions = conditions.filter(
+          condition => condition !== '其他' && !CHRONIC_OPTIONS.includes(condition),
+        );
+        setChronicConditions(Array.from(new Set(fixedConditions)));
+        setCustomChronicEnabled(customConditions.length > 0 || conditions.includes('其他'));
+        setCustomChronicText(Array.from(new Set(customConditions)).join('、'));
+      } catch (err) {
+        console.warn('Invalid chronic conditions:', err);
+        setChronicConditions([]);
+        setCustomChronicEnabled(false);
+        setCustomChronicText('');
+        setProfileError('慢性病資料格式異常，請重新選擇後儲存。');
+      }
       try {
         const meds = JSON.parse(pData.current_medications || '[]');
         if (Array.isArray(meds)) setMedications(meds);
@@ -531,16 +578,56 @@ const ElderProfilePage: React.FC = () => {
   };
 
   const handleSave = async () => {
+    setProfileError('');
+
+    const customConditions = customChronicEnabled
+      ? parseCustomConditions(customChronicText)
+      : [];
+    if (customChronicEnabled && customConditions.length === 0) {
+      setProfileError('請填寫「其他／自訂」慢性病名稱，或取消該選項。');
+      return;
+    }
+    if (customConditions.some(condition => condition.length > 100)) {
+      setProfileError('每個慢性病名稱不可超過 100 個字。');
+      return;
+    }
+
+    let gender: string | null = genderChoice || null;
+    if (genderChoice === '自訂') {
+      gender = customGender.trim();
+      if (!gender) {
+        setProfileError('請填寫自訂性別，或改選其他選項。');
+        return;
+      }
+    }
+
+    const allConditions = Array.from(new Set([...chronicConditions, ...customConditions]));
+    if (allConditions.length > 20) {
+      setProfileError('慢性病最多可填寫 20 項。');
+      return;
+    }
+
+    setSavingProfile(true);
     try {
       await profileApi.update({
-        display_name: displayName,
-        birth, height, weight,
-        chronic_conditions: JSON.stringify(chronicConditions),
+        display_name: displayName.trim(),
+        birth,
+        height,
+        weight,
+        gender,
+        chronic_conditions: JSON.stringify(allConditions),
         current_medications: JSON.stringify(medications),
-        allergies: JSON.stringify(allergies.split('、').filter(Boolean)),
-      } as any);
-    } catch {}
-    setIsEditing(false);
+        allergies: JSON.stringify(
+          allergies.split(/[、,，]+/).map(item => item.trim()).filter(Boolean),
+        ),
+      });
+      setCustomChronicText(customConditions.join('、'));
+      setIsEditing(false);
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : '個人資料儲存失敗，請稍後再試。');
+    } finally {
+      setSavingProfile(false);
+    }
   };
 
   const handleRegenerateCode = async () => {
@@ -570,9 +657,26 @@ const ElderProfilePage: React.FC = () => {
     finally { setSavingNotes(false); setEditingNotes(false); }
   };
 
-  const toggleChronic = (c: string) => {
-    setChronicConditions(prev => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c]);
+  const toggleChronic = (condition: string) => {
+    setChronicConditions(prev => (
+      prev.includes(condition)
+        ? prev.filter(item => item !== condition)
+        : [...prev, condition]
+    ));
   };
+  const toggleCustomChronic = () => {
+    if (customChronicEnabled) setCustomChronicText('');
+    setCustomChronicEnabled(!customChronicEnabled);
+    setProfileError('');
+  };
+  const displayedCustomConditions = parseCustomConditions(customChronicText);
+  const displayedConditions = Array.from(new Set([
+    ...chronicConditions,
+    ...displayedCustomConditions,
+    ...(customChronicEnabled && displayedCustomConditions.length === 0 ? ['其他'] : []),
+  ]));
+  const displayedGender = genderChoice === '自訂' ? customGender.trim() : genderChoice;
+
   const addMedication = () => setMedications(prev => [...prev, { name: '', dosage: '', timing: '' }]);
   const updateMedication = (i: number, field: keyof Medication, value: string) => {
     setMedications(prev => { const m = [...prev]; m[i] = { ...m[i], [field]: value }; return m; });
@@ -625,15 +729,22 @@ const ElderProfilePage: React.FC = () => {
               <UserIcon className="w-7 h-7 text-emerald-500" /> 基本資料
             </h2>
             {isEditing ? (
-              <button onClick={handleSave} className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold transition-all shadow-md">
-                <Save className="w-5 h-5" /> 儲存修改
+              <button onClick={handleSave} disabled={savingProfile} className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold transition-all shadow-md disabled:opacity-60 disabled:cursor-not-allowed">
+                {savingProfile ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                {savingProfile ? '儲存中…' : '儲存修改'}
               </button>
             ) : (
-              <button onClick={() => setIsEditing(true)} className="flex items-center gap-2 px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition-all">
+              <button onClick={() => { setProfileError(''); setIsEditing(true); }} className="flex items-center gap-2 px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition-all">
                 <Edit3 className="w-5 h-5" /> 編輯資料
               </button>
             )}
           </div>
+
+          {profileError && (
+            <div role="alert" className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-base text-red-700">
+              {profileError}
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xl">
             <div className="space-y-2">
@@ -659,19 +770,62 @@ const ElderProfilePage: React.FC = () => {
               </div>
             </div>
 
-            {/* 慢性病 */}
-            <div className="space-y-2 col-span-1 md:col-span-2 mt-4 pt-4 border-t border-slate-100">
-              <label className="text-sm font-semibold text-slate-500 uppercase tracking-wider">慢性病</label>
+            {/* 性別 */}
+            <div className="space-y-3 col-span-1 md:col-span-2 mt-4 pt-4 border-t border-slate-100">
+              <label className="text-sm font-semibold text-slate-500 uppercase tracking-wider">性別</label>
               {isEditing ? (
-                <div className="flex flex-wrap gap-2">
-                  {CHRONIC_OPTIONS.map(c => (
-                    <button key={c} type="button" onClick={() => toggleChronic(c)}
-                      className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${chronicConditions.includes(c) ? 'bg-emerald-100 text-emerald-700 border border-emerald-300' : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'}`}
-                    >{c}</button>
-                  ))}
+                <div className="space-y-3">
+                  <div className="flex flex-wrap gap-2">
+                    {[...GENDER_OPTIONS, '自訂'].map(option => (
+                      <button key={option} type="button" onClick={() => { setGenderChoice(option); setProfileError(''); }}
+                        className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${genderChoice === option ? 'bg-emerald-100 text-emerald-700 border border-emerald-300' : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'}`}
+                      >{option}</button>
+                    ))}
+                    {genderChoice && (
+                      <button type="button" onClick={() => { setGenderChoice(''); setCustomGender(''); }}
+                        className="px-3 py-1.5 rounded-full text-sm font-medium text-slate-500 hover:text-red-500">
+                        清除
+                      </button>
+                    )}
+                  </div>
+                  {genderChoice === '自訂' && (
+                    <input type="text" value={customGender} onChange={e => setCustomGender(e.target.value)} maxLength={50}
+                      placeholder="請輸入您的性別認同"
+                      className="w-full border border-emerald-400 rounded-xl px-4 py-3 text-base text-slate-800 bg-white focus:ring-4 focus:ring-emerald-100 outline-none" />
+                  )}
                 </div>
               ) : (
-                <p className="text-lg text-slate-700">{chronicConditions.length > 0 ? chronicConditions.join('、') : '未填寫'}</p>
+                <p className="text-lg text-slate-700">{displayedGender || '未填寫'}</p>
+              )}
+            </div>
+
+            {/* 慢性病 */}
+            <div className="space-y-3 col-span-1 md:col-span-2 mt-4 pt-4 border-t border-slate-100">
+              <label className="text-sm font-semibold text-slate-500 uppercase tracking-wider">慢性病</label>
+              {isEditing ? (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap gap-2">
+                    {CHRONIC_OPTIONS.map(condition => (
+                      <button key={condition} type="button" onClick={() => toggleChronic(condition)}
+                        className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${chronicConditions.includes(condition) ? 'bg-emerald-100 text-emerald-700 border border-emerald-300' : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'}`}
+                      >{condition}</button>
+                    ))}
+                    <button type="button" onClick={toggleCustomChronic}
+                      className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${customChronicEnabled ? 'bg-emerald-100 text-emerald-700 border border-emerald-300' : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'}`}>
+                      其他／自訂
+                    </button>
+                  </div>
+                  {customChronicEnabled && (
+                    <div className="space-y-1">
+                      <input type="text" value={customChronicText} onChange={e => setCustomChronicText(e.target.value)}
+                        placeholder="請輸入疾病名稱，多項可用頓號或逗號分隔"
+                        className="w-full border border-emerald-400 rounded-xl px-4 py-3 text-base text-slate-800 bg-white focus:ring-4 focus:ring-emerald-100 outline-none" />
+                      <p className="text-xs text-slate-400">例如：帕金森氏症、甲狀腺功能低下</p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-lg text-slate-700">{displayedConditions.length > 0 ? displayedConditions.join('、') : '未填寫'}</p>
               )}
             </div>
 
