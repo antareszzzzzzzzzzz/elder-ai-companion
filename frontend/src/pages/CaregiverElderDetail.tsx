@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useMockData } from '../store/MockDataContext';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, User, MessageSquare, BellRing, Trash2, Plus, Brain, Utensils, Pill, Activity, HeartPulse, Loader2, RefreshCw, Lightbulb, ChevronLeft, ChevronRight, Clock, Send } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { healthApi, summaryApi, careItemsApi, followApi, type DailySummary, type HealthOverview, type CareItem } from '../services/api';
+import NotificationBell, { SUMMARY_UPDATED_EVENT } from '../components/NotificationBell';
 
 // 保留暫時隱藏按鈕所需圖示，避免 TypeScript 將其視為未使用。
 void RefreshCw;
@@ -218,8 +219,28 @@ const CaregiverElderDetail: React.FC = () => {
   const { followingElders } = useMockData();
   const navigate = useNavigate();
   const { accountId } = useParams<{ accountId: string }>();
+  const [searchParams] = useSearchParams();
 
-  const [activeTab, setActiveTab] = useState<'profile' | 'ai_summary' | 'reminders'>('profile');
+  // 允許用 ?tab=ai_summary 直接開在指定分頁（通知鈴鐺會帶這個參數進來）
+  type TabId = 'profile' | 'ai_summary' | 'reminders';
+  const VALID_TABS: TabId[] = ['profile', 'ai_summary', 'reminders'];
+  const requestedTab = searchParams.get('tab') as TabId | null;
+  const initialTab: TabId =
+    requestedTab && VALID_TABS.includes(requestedTab) ? requestedTab : 'profile';
+
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab);
+
+  // useState 的初始值只在掛載時生效。若使用者已經停留在某位長輩的頁面，
+  // 此時點通知會導到相同路由型態，元件不會重新掛載，因此需要同步 tab 參數。
+  useEffect(() => {
+    if (requestedTab && VALID_TABS.includes(requestedTab)) {
+      setActiveTab(requestedTab);
+    }
+  }, [requestedTab]);
+
+  // ?date=YYYY-MM-DD 指定要捲動並高亮的那一天摘要
+  const requestedDate = searchParams.get('date');
+  const [highlightDate, setHighlightDate] = useState<string | null>(null);
 
   // 從追蹤列表找到對應的長輩基本資訊
   const elderInfo = followingElders.find((e) => e.account_id === accountId);
@@ -274,6 +295,34 @@ const CaregiverElderDetail: React.FC = () => {
     }
   };
 
+  // 從通知進來時，捲動到指定日期的摘要並短暫高亮。
+  // 必須等資料載入完成，否則目標節點還沒被 render 出來。
+  useEffect(() => {
+    if (!requestedDate || activeTab !== 'ai_summary' || loadingOverview) return;
+
+    const exists = dailySummaries.some(
+      (s) => s.date === requestedDate && s.summary_type !== 'weekly'
+    );
+    if (!exists) return;
+
+    setHighlightDate(requestedDate);
+
+    // 延後一個 tick 再捲動，確保這一輪 render 已經產生對應的 DOM 節點
+    const scrollTimer = window.setTimeout(() => {
+      document
+        .getElementById(`daily-summary-${requestedDate}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 120);
+
+    // 高亮只是引導視線，幾秒後淡回原樣
+    const clearTimer = window.setTimeout(() => setHighlightDate(null), 4000);
+
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [requestedDate, activeTab, loadingOverview, dailySummaries]);
+
   const handlePushNow = async () => {
     if (!accountId) return;
     setPushingNow(true);
@@ -299,6 +348,8 @@ const CaregiverElderDetail: React.FC = () => {
 
       // 重新載入摘要清單，讓新產生的摘要立即顯示
       await loadHealthData();
+      // 通知鈴鐺立刻重抓，不必等下一次 60 秒輪詢
+      window.dispatchEvent(new Event(SUMMARY_UPDATED_EVENT));
     } catch (err: any) {
       setPushMessage(err?.message || '推播失敗，請稍後再試');
     } finally {
@@ -531,7 +582,9 @@ const CaregiverElderDetail: React.FC = () => {
               </div>
               {displayName} 的專屬照護區
             </h1>
-            <div className="w-24"></div>
+            <div className="w-24 flex justify-end">
+              <NotificationBell />
+            </div>
           </div>
 
           {/* Tabs */}
@@ -817,14 +870,31 @@ const CaregiverElderDetail: React.FC = () => {
                       {dailyOnlySummaries.length > 0 ? (
                         <div className="space-y-8 relative z-10">
                           {dailyOnlySummaries.map((summary, idx) => (
-                            <div key={idx} className="flex gap-6">
+                            <div
+                              key={idx}
+                              id={`daily-summary-${summary.date}`}
+                              className="flex gap-6 scroll-mt-32"
+                            >
                               <div className="w-8 h-8 rounded-full text-white flex items-center justify-center shadow-md flex-shrink-0 mt-1 bg-teal-500">
                                 <MessageSquare className="w-4 h-4" />
                               </div>
-                              <div className="p-6 rounded-2xl border flex-1 bg-slate-50 border-slate-200">
+                              <div
+                                className={`p-6 rounded-2xl border flex-1 transition-all duration-500 ${
+                                  highlightDate === summary.date
+                                    ? 'bg-teal-50 border-teal-400 ring-4 ring-teal-200 shadow-lg'
+                                    : 'bg-slate-50 border-slate-200'
+                                }`}
+                              >
                                 <div className="flex justify-between items-center mb-3">
                                   <h4 className="font-bold text-lg text-slate-800">每日摘要</h4>
-                                  <span className="text-sm font-semibold text-slate-500">{summary.date}</span>
+                                  <div className="flex items-center gap-2">
+                                    {highlightDate === summary.date && (
+                                      <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-teal-500 text-white">
+                                        剛產生
+                                      </span>
+                                    )}
+                                    <span className="text-sm font-semibold text-slate-500">{summary.date}</span>
+                                  </div>
                                 </div>
                                 <p className="text-slate-700 leading-relaxed text-lg">{summary.summary_text}</p>
                               </div>

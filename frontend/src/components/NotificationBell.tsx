@@ -18,10 +18,29 @@ interface SummaryNotice {
   display_name: string;
   date: string;
   summary_text: string;
+  /** 日期＋內容雜湊，用於判斷是否為未讀 */
+  fingerprint: string;
 }
 
-/** 已讀狀態：{ [account_id]: 已讀的日期 } */
+/** 已讀狀態：{ [account_id]: 已讀的摘要識別碼 } */
 const SEEN_KEY = 'seen_daily_summaries';
+
+/** 摘要更新事件：立即推播後由詳細頁發出，讓鈴鐺不用等下一次輪詢 */
+export const SUMMARY_UPDATED_EVENT = 'eldercare:summary-updated';
+
+/**
+ * 摘要的識別碼＝日期＋內容雜湊。
+ *
+ * 只用日期的話，同一天重新產生的摘要會被已讀狀態永久壓掉；
+ * 把內容一起算進來，重新產生（內容必然不同）就會被視為新通知。
+ */
+function summaryFingerprint(date: string, text: string): string {
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) {
+    hash = (hash * 31 + text.charCodeAt(i)) | 0;
+  }
+  return `${date}:${hash}`;
+}
 
 function loadSeen(): Record<string, string> {
   try {
@@ -33,9 +52,9 @@ function loadSeen(): Record<string, string> {
   }
 }
 
-function markSeen(accountId: string, date: string) {
+function markSeen(accountId: string, fingerprint: string) {
   const seen = loadSeen();
-  seen[accountId] = date;
+  seen[accountId] = fingerprint;
   try {
     localStorage.setItem(SEEN_KEY, JSON.stringify(seen));
   } catch {
@@ -78,7 +97,15 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ onDark = false }) =
   useEffect(() => {
     fetchSummaryNotices();
     const interval = setInterval(fetchSummaryNotices, 60000);
-    return () => clearInterval(interval);
+
+    // 立即推播後由詳細頁發出事件，不必等下一次輪詢就能看到通知
+    const onSummaryUpdated = () => fetchSummaryNotices();
+    window.addEventListener(SUMMARY_UPDATED_EVENT, onSummaryUpdated);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener(SUMMARY_UPDATED_EVENT, onSummaryUpdated);
+    };
   }, []);
 
   // Close dropdown on outside click
@@ -120,12 +147,20 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ onDark = false }) =
               (s) => s.date === today && s.summary_type !== 'weekly'
             );
             if (!todaySummary) return null;
-            if (seen[elder.account_id] === today) return null;
+
+            const fingerprint = summaryFingerprint(
+              todaySummary.date,
+              todaySummary.summary_text || ''
+            );
+            // 已讀比對用「日期＋內容」，所以重新產生的摘要會再次通知
+            if (seen[elder.account_id] === fingerprint) return null;
+
             return {
               account_id: elder.account_id,
               display_name: elder.display_name || elder.account_handle || '家人',
               date: todaySummary.date,
               summary_text: todaySummary.summary_text,
+              fingerprint,
             } as SummaryNotice;
           } catch {
             // 單一長輩查詢失敗不影響其他人
@@ -165,14 +200,17 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ onDark = false }) =
   };
 
   const handleOpenSummary = (notice: SummaryNotice) => {
-    markSeen(notice.account_id, notice.date);
+    markSeen(notice.account_id, notice.fingerprint);
     setSummaryNotices((prev) => prev.filter((n) => n.account_id !== notice.account_id));
     setShowDropdown(false);
-    navigate(`/elder/${notice.account_id}`);
+    // 帶上 tab 與 date：直接落在「AI 摘要紀錄」分頁，並捲動到該日摘要
+    navigate(
+      `/elder/${notice.account_id}?tab=ai_summary&date=${encodeURIComponent(notice.date)}`
+    );
   };
 
   const handleDismissSummary = (notice: SummaryNotice) => {
-    markSeen(notice.account_id, notice.date);
+    markSeen(notice.account_id, notice.fingerprint);
     setSummaryNotices((prev) => prev.filter((n) => n.account_id !== notice.account_id));
   };
 
