@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useMockData } from '../store/MockDataContext';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, User, MessageSquare, BellRing, Trash2, Plus, Brain, Utensils, Pill, Activity, HeartPulse, Loader2, RefreshCw, Lightbulb, ChevronLeft, ChevronRight, Clock, Send } from 'lucide-react';
+import { ArrowLeft, User, MessageSquare, BellRing, Trash2, Plus, Brain, Utensils, Pill, Activity, HeartPulse, Moon, Loader2, RefreshCw, Lightbulb, ChevronLeft, ChevronRight, Clock, Send } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { healthApi, summaryApi, careItemsApi, followApi, type DailySummary, type HealthOverview, type CareItem } from '../services/api';
+import type { MemoryCardType } from '../store/MockDataContext';
 import NotificationBell, { SUMMARY_UPDATED_EVENT } from '../components/NotificationBell';
 
 // 保留暫時隱藏按鈕所需圖示，避免 TypeScript 將其視為未使用。
@@ -12,7 +13,7 @@ void RefreshCw;
 /** 照護者端記憶足跡時間軸子組件 */
 interface CaregiverMemoryCard {
   id: string;
-  type: string;
+  type: MemoryCardType;
   title: string;
   content: string;
   date: string;
@@ -44,20 +45,22 @@ function groupCardsByDate(cards: CaregiverMemoryCard[]): CaregiverDayNode[] {
   return nodes;
 }
 
-function getCaregiverCategoryLabel(type: string): string {
+function getCaregiverCategoryLabel(type: MemoryCardType): string {
   switch (type) {
     case 'diet': return '飲食';
     case 'medication': return '用藥';
     case 'activity': return '活動';
+    case 'sleep': return '睡眠';
+    case 'body': return '身體';
     case 'mood': return '情緒';
-    default: return '健康';
+    case 'other': return '其他';
   }
 }
 
 const CaregiverMemoryTimeline: React.FC<{
   memoryCards: CaregiverMemoryCard[];
-  getIconForType: (type: string) => React.ReactNode;
-  getBgForType: (type: string) => string;
+  getIconForType: (type: MemoryCardType) => React.ReactNode;
+  getBgForType: (type: MemoryCardType) => string;
 }> = ({ memoryCards, getIconForType, getBgForType }) => {
   const dayNodes = groupCardsByDate(memoryCards);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -493,33 +496,40 @@ const CaregiverElderDetail: React.FC = () => {
     }
   };
 
-  const getIconForType = (type: string) => {
+  const getIconForType = (type: MemoryCardType) => {
     switch (type) {
       case 'diet': return <Utensils className="w-5 h-5 text-amber-500" />;
       case 'medication': return <Pill className="w-5 h-5 text-rose-500" />;
       case 'activity': return <Activity className="w-5 h-5 text-emerald-500" />;
+      case 'sleep': return <Moon className="w-5 h-5 text-sky-500" />;
+      case 'body': return <HeartPulse className="w-5 h-5 text-teal-500" />;
       case 'mood': return <Brain className="w-5 h-5 text-indigo-500" />;
-      default: return <HeartPulse className="w-5 h-5 text-teal-500" />;
+      case 'other': return <Lightbulb className="w-5 h-5 text-slate-500" />;
     }
   };
 
-  const getBgForType = (type: string) => {
+  const getBgForType = (type: MemoryCardType) => {
     switch (type) {
       case 'diet': return 'bg-amber-50 border-amber-200';
       case 'medication': return 'bg-rose-50 border-rose-200';
       case 'activity': return 'bg-emerald-50 border-emerald-200';
+      case 'sleep': return 'bg-sky-50 border-sky-200';
+      case 'body': return 'bg-teal-50 border-teal-200';
       case 'mood': return 'bg-indigo-50 border-indigo-200';
-      default: return 'bg-slate-50 border-slate-200';
+      case 'other': return 'bg-slate-50 border-slate-200';
     }
   };
 
-  const categoryToType = (category: string) => {
+  const categoryToType = (category: string): MemoryCardType => {
     switch (category) {
       case '飲食': return 'diet';
       case '用藥': return 'medication';
       case '活動': return 'activity';
+      case '睡眠': return 'sleep';
+      case '身體': return 'body';
       case '情緒': return 'mood';
-      default: return 'activity';
+      case '其他': return 'other';
+      default: return 'other';
     }
   };
 

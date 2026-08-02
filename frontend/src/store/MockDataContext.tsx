@@ -3,9 +3,11 @@ import { api } from '../services/api';
 
 export type Role = 'elderly' | 'caregiver';
 
+export type MemoryCardType = 'diet' | 'medication' | 'activity' | 'sleep' | 'body' | 'mood' | 'other';
+
 export interface MemoryCard {
   id: string;
-  type: 'diet' | 'medication' | 'activity' | 'mood';
+  type: MemoryCardType;
   title: string;
   content: string;
   date: string;

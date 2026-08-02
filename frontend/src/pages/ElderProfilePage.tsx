@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useMockData } from '../store/MockDataContext';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Edit3, Save, Activity, Utensils, Pill, Brain, HeartPulse, User as UserIcon, RefreshCw, Key, Loader2, Plus, Trash2, FileText, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
+import { ArrowLeft, Edit3, Save, Activity, Utensils, Pill, Brain, HeartPulse, Moon, User as UserIcon, RefreshCw, Key, Loader2, Plus, Trash2, FileText, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { profileApi, healthApi, api, type Fact, followApi } from '../services/api';
-import type { MemoryCard } from '../store/MockDataContext';
+import type { MemoryCard, MemoryCardType } from '../store/MockDataContext';
 
 interface Medication {
   name: string;
@@ -12,13 +12,16 @@ interface Medication {
   timing: string;
 }
 
-function categoryToType(category: string): MemoryCard['type'] {
+function categoryToType(category: string): MemoryCardType {
   switch (category) {
     case '飲食': return 'diet';
     case '用藥': return 'medication';
     case '活動': return 'activity';
+    case '睡眠': return 'sleep';
+    case '身體': return 'body';
     case '情緒': return 'mood';
-    default: return 'activity';
+    case '其他': return 'other';
+    default: return 'other';
   }
 }
 
@@ -30,6 +33,7 @@ function categoryToTitle(category: string): string {
     case '睡眠': return '睡眠記憶卡';
     case '身體': return '身體記憶卡';
     case '情緒': return '情緒記憶卡';
+    case '其他': return '其他記憶卡';
     default: return '生活記憶卡';
   }
 }
@@ -180,8 +184,8 @@ interface MemoryTimelineProps {
   setEditingNotes: (v: boolean) => void;
   savingNotes: boolean;
   handleSaveNotes: () => void;
-  getIconForType: (type: string) => React.ReactNode;
-  getBgForType: (type: string) => string;
+  getIconForType: (type: MemoryCardType) => React.ReactNode;
+  getBgForType: (type: MemoryCardType) => string;
 }
 
 interface DayNode {
@@ -211,13 +215,15 @@ function groupByDate(cards: MemoryCard[]): DayNode[] {
   return nodes;
 }
 
-function getCategoryLabel(type: string): string {
+function getCategoryLabel(type: MemoryCardType): string {
   switch (type) {
     case 'diet': return '飲食';
     case 'medication': return '用藥';
     case 'activity': return '活動';
+    case 'sleep': return '睡眠';
+    case 'body': return '身體';
     case 'mood': return '情緒';
-    default: return '健康';
+    case 'other': return '其他';
   }
 }
 
@@ -442,12 +448,11 @@ const MemoryTimeline: React.FC<MemoryTimelineProps> = ({
 const ElderProfilePage: React.FC = () => {
   const { user } = useMockData();
   const navigate = useNavigate();
-  if (!user) return null;
 
   // 基本資料
   const [isEditing, setIsEditing] = useState(false);
-  const [displayName, setDisplayName] = useState(user.name);
-  const [accountHandle, setAccountHandle] = useState(user.username);
+  const [displayName, setDisplayName] = useState(user?.name ?? '');
+  const [accountHandle, setAccountHandle] = useState(user?.username ?? '');
   const [birth, setBirth] = useState('');
   const [height, setHeight] = useState('');
   const [weight, setWeight] = useState('');
@@ -472,9 +477,12 @@ const ElderProfilePage: React.FC = () => {
   const [memoryCards, setMemoryCards] = useState<MemoryCard[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { loadFromApi(); }, []);
+  useEffect(() => {
+    if (user) loadFromApi();
+  }, [user]);
 
   const loadFromApi = async () => {
+    if (!user) return;
     setLoading(true);
     try {
       const pData = await profileApi.get();
@@ -571,24 +579,30 @@ const ElderProfilePage: React.FC = () => {
   };
   const removeMedication = (i: number) => setMedications(prev => prev.filter((_, idx) => idx !== i));
 
-  const getIconForType = (type: string) => {
+  const getIconForType = (type: MemoryCardType) => {
     switch (type) {
       case 'diet': return <Utensils className="w-6 h-6 text-amber-500" />;
       case 'medication': return <Pill className="w-6 h-6 text-rose-500" />;
       case 'activity': return <Activity className="w-6 h-6 text-emerald-500" />;
+      case 'sleep': return <Moon className="w-6 h-6 text-sky-500" />;
+      case 'body': return <HeartPulse className="w-6 h-6 text-teal-500" />;
       case 'mood': return <Brain className="w-6 h-6 text-indigo-500" />;
-      default: return <HeartPulse className="w-6 h-6 text-teal-500" />;
+      case 'other': return <FileText className="w-6 h-6 text-slate-500" />;
     }
   };
-  const getBgForType = (type: string) => {
+  const getBgForType = (type: MemoryCardType) => {
     switch (type) {
       case 'diet': return 'bg-amber-50 border-amber-200';
       case 'medication': return 'bg-rose-50 border-rose-200';
       case 'activity': return 'bg-emerald-50 border-emerald-200';
+      case 'sleep': return 'bg-sky-50 border-sky-200';
+      case 'body': return 'bg-teal-50 border-teal-200';
       case 'mood': return 'bg-indigo-50 border-indigo-200';
-      default: return 'bg-slate-50 border-slate-200';
+      case 'other': return 'bg-slate-50 border-slate-200';
     }
   };
+
+  if (!user) return null;
 
   return (
     <div className="min-h-screen bg-slate-50/50 pb-20">
