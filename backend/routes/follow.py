@@ -1,8 +1,11 @@
+import re
 import uuid
 from datetime import datetime, timezone, timedelta
 from flask import Blueprint, request, jsonify, g
 from middleware.auth import require_auth
 from services.dynamodb import follows_table, accounts_table
+from services.scheduler import request_force_run
+from services.logger import follow_logger
 
 TW_TZ = timezone(timedelta(hours=8))
 
@@ -285,6 +288,108 @@ def remove_follow():
         follows_table.delete_item(Key={"follow_id": follow_id})
 
         return jsonify({"follow_id": follow_id, "status": "removed"})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ===== 每日摘要自動推播排程設定 =====
+
+# HH:MM 24 小時制（00:00 ~ 23:59）
+_TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
+
+
+def _find_approved_follow(follower_id: str, followee_id: str):
+    """找出 follower 對 followee 且已核准的追蹤記錄，找不到回 None。"""
+    response = follows_table.scan(
+        FilterExpression="follower_id = :fid AND followee_id = :eid AND #s = :status",
+        ExpressionAttributeNames={"#s": "status"},
+        ExpressionAttributeValues={
+            ":fid": follower_id,
+            ":eid": followee_id,
+            ":status": "approved"
+        }
+    )
+    items = response.get("Items", [])
+    return items[0] if items else None
+
+
+@follow_bp.route("/summary-schedule/<followee_id>", methods=["GET"])
+@require_auth
+def get_summary_schedule(followee_id):
+    """取得目前登入者對某位被追蹤者設定的每日摘要推播時間。
+
+    回傳 daily_summary_time 為 "HH:MM"（已設定）或 None（未設定 / 關閉）。
+    """
+    try:
+        follow = _find_approved_follow(g.user_id, followee_id)
+        if not follow:
+            return jsonify({"error": "尚未建立追蹤關係或未經核准"}), 403
+
+        return jsonify({
+            "followee_id": followee_id,
+            "daily_summary_time": follow.get("daily_summary_time") or None
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@follow_bp.route("/summary-schedule", methods=["PUT"])
+@require_auth
+def set_summary_schedule():
+    """設定或關閉每日摘要自動推播時間。
+
+    Body: {"followee_id": "...", "daily_summary_time": "20:00"}
+    傳 null 或空字串代表關閉自動推播。
+    時間一律視為台灣時間（UTC+8），與 DailySummaries 的日期切分一致。
+    """
+    data = request.get_json()
+    if not data or not data.get("followee_id"):
+        return jsonify({"error": "followee_id is required"}), 400
+
+    followee_id = data["followee_id"]
+    raw_time = data.get("daily_summary_time")
+
+    # 允許用 null / "" 關閉
+    if raw_time is None or (isinstance(raw_time, str) and not raw_time.strip()):
+        new_time = None
+    else:
+        if not isinstance(raw_time, str) or not _TIME_PATTERN.match(raw_time.strip()):
+            return jsonify({"error": "daily_summary_time 格式須為 HH:MM（24 小時制）"}), 400
+        new_time = raw_time.strip()
+
+    try:
+        follow = _find_approved_follow(g.user_id, followee_id)
+        if not follow:
+            return jsonify({"error": "尚未建立追蹤關係或未經核准"}), 403
+
+        follow_id = follow["follow_id"]
+
+        if new_time is None:
+            follows_table.update_item(
+                Key={"follow_id": follow_id},
+                UpdateExpression="REMOVE daily_summary_time"
+            )
+            follow_logger.info(f"[{g.user_id[:8]}] 關閉對 {followee_id[:8]} 的每日摘要推播")
+        else:
+            follows_table.update_item(
+                Key={"follow_id": follow_id},
+                UpdateExpression="SET daily_summary_time = :t",
+                ExpressionAttributeValues={":t": new_time}
+            )
+            follow_logger.info(
+                f"[{g.user_id[:8]}] 設定對 {followee_id[:8]} 的每日摘要推播時間為 {new_time}"
+            )
+            # 每次儲存時間都允許重新產生一次當天摘要，
+            # 讓「設定時間 → 等觸發」的流程可以重複驗證，
+            # 不需要手動刪除 DynamoDB 裡當天的摘要。
+            request_force_run(followee_id)
+
+        return jsonify({
+            "followee_id": followee_id,
+            "daily_summary_time": new_time
+        })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500

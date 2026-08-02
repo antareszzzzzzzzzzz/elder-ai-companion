@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useMockData } from '../store/MockDataContext';
 import { useNavigate } from 'react-router-dom';
-import { Bot, Bell, Volume2, VolumeX, Mic, MicOff, Send, Settings, User as UserIcon, Repeat, Plus, MessageSquare } from 'lucide-react';
+import { Bot, Volume2, VolumeX, Mic, MicOff, Send, Settings, User as UserIcon, Repeat, Plus, MessageSquare } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { chatApi, type ChatMessage, type ChatSession } from '../services/api';
 import { sttService, ttsService } from '../services/speech';

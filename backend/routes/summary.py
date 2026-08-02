@@ -3,6 +3,8 @@ from flask import Blueprint, request, jsonify, g
 from middleware.auth import require_auth
 from services.dynamodb import facts_table, daily_summaries_table, follows_table
 from services.bedrock import generate_daily_summary, generate_weekly_summary
+from services.daily_summary import run_daily_summary
+from services.scheduler import trigger_now
 from services.logger import summary_logger
 
 summary_bp = Blueprint("summary", __name__)
@@ -38,53 +40,58 @@ def generate_daily(target_account_id):
     today_str = today.isoformat()
 
     try:
-        response = facts_table.scan(
-            FilterExpression="account_id = :aid",
-            ExpressionAttributeValues={":aid": target_account_id}
-        )
-        all_facts = response.get("Items", [])
-        summary_logger.info(f"[{target_account_id[:8]}] Generating daily summary for {today_str}, total facts={len(all_facts)}")
+        result = run_daily_summary(target_account_id, today)
 
-        today_facts = []
-        for fact in all_facts:
-            updated_at = fact.get("updated_at", "")
-            try:
-                fact_date = datetime.fromisoformat(updated_at).date()
-                if fact_date == today:
-                    today_facts.append(fact)
-            except (ValueError, AttributeError):
-                continue
-
-        if not today_facts:
+        if result["status"] == "no_facts":
             return jsonify({"message": "今天沒有任何紀錄可以摘要", "summary": None})
 
-        facts_by_category = {}
-        for fact in today_facts:
-            category = fact.get("category", "其他")
-            if category not in facts_by_category:
-                facts_by_category[category] = []
-            facts_by_category[category].append(fact)
-
-        summary_text = generate_daily_summary(facts_by_category, today_str)
-
-        pk = f"{target_account_id}#{today_str}"
-        daily_summaries_table.put_item(Item={
-            "account_id#date": pk,
-            "account_id": target_account_id,
-            "date": today_str,
-            "summary_type": "daily",
-            "summary_text": summary_text
-        })
-
         return jsonify({
-            "date": today_str,
-            "summary": summary_text,
+            "date": result["date"],
+            "summary": result["summary"],
             "summary_type": "daily",
-            "facts_count": len(today_facts)
+            "facts_count": result["facts_count"]
         })
 
     except Exception as e:
         summary_logger.error(f"[{target_account_id[:8]}] Daily summary error: {type(e).__name__}: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@summary_bp.route("/push-now/<target_account_id>", methods=["POST"])
+@require_auth
+def push_now(target_account_id):
+    """立即產生今日摘要並寄送 email 通知（可重複觸發，供展示與測試用）。
+
+    與排程走完全相同的程式碼路徑，差別只在忽略「今天已有摘要」的去重判斷，
+    因此不需要先去資料庫刪掉當天的摘要就能重複展示。
+    """
+    if not _check_permission(target_account_id):
+        return jsonify({"error": "Permission denied"}), 403
+
+    try:
+        result = trigger_now(target_account_id, extra_follower_ids=[g.user_id])
+
+        if result["status"] != "created":
+            return jsonify({
+                "message": "今天沒有任何紀錄可以摘要，請先讓長輩與 AI 對話",
+                "date": result["date"],
+                "summary": None,
+                "recipients": []
+            })
+
+        return jsonify({
+            "date": result["date"],
+            "summary_type": "daily",
+            "facts_count": result["facts_count"],
+            "recipients": result["recipients"],
+            "email_enabled": result["email_enabled"]
+        })
+
+    except Exception as e:
+        summary_logger.error(
+            f"[{target_account_id[:8]}] 立即推播失敗: {type(e).__name__}: {e}",
+            exc_info=True
+        )
         return jsonify({"error": str(e)}), 500
 
 
