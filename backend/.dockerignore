@@ -1,0 +1,23 @@
+# Exclude secrets and environment files
+.env
+.env.*
+
+# Keep .env.example for reference
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Logs
+logs/
+*.log
+
+# STT service (built separately)
+stt_service/
+
+# IDE
+.vscode/
+.idea/
