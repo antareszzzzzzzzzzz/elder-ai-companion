@@ -120,6 +120,9 @@ export interface HealthOverview {
   daily_summaries: DailySummary[];
   medication_facts: Fact[];
   body_facts: Fact[];
+  diet_facts?: Fact[];
+  mood_facts?: Fact[];
+  other_facts?: Fact[];
   cross_day_insights: string | null;
 }
 

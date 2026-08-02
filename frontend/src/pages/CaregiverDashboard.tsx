@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useMockData } from '../store/MockDataContext';
 import { useNavigate } from 'react-router-dom';
-import { Plus, User, LogOut, ArrowRight, HeartPulse, UserPlus, X, MessageSquare, Loader2, Trash2 } from 'lucide-react';
+import { Plus, LogOut, ArrowRight, HeartPulse, UserPlus, X, MessageSquare, Loader2, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { followApi } from '../services/api';
 
