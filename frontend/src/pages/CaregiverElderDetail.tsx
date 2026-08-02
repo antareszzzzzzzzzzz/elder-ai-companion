@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useMockData } from '../store/MockDataContext';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, User, MessageSquare, BellRing, Trash2, Plus, Brain, Utensils, Pill, Activity, HeartPulse, Loader2, RefreshCw, Lightbulb, ChevronLeft, ChevronRight, Clock, Send } from 'lucide-react';
+import { ArrowLeft, User, MessageSquare, BellRing, Trash2, Plus, Brain, Utensils, Pill, Activity, HeartPulse, Loader2, RefreshCw, Lightbulb, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { healthApi, summaryApi, careItemsApi, followApi, type DailySummary, type HealthOverview, type CareItem } from '../services/api';
-import NotificationBell, { SUMMARY_UPDATED_EVENT } from '../components/NotificationBell';
+import NotificationBell from '../components/NotificationBell';
 
 // 保留暫時隱藏按鈕所需圖示，避免 TypeScript 將其視為未使用。
 void RefreshCw;
@@ -266,8 +266,6 @@ const CaregiverElderDetail: React.FC = () => {
   const [loadingSchedule, setLoadingSchedule] = useState(false);
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [scheduleMessage, setScheduleMessage] = useState<string | null>(null);
-  const [pushingNow, setPushingNow] = useState(false);
-  const [pushMessage, setPushMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (accountId) {
@@ -322,40 +320,6 @@ const CaregiverElderDetail: React.FC = () => {
       window.clearTimeout(clearTimer);
     };
   }, [requestedDate, activeTab, loadingOverview, dailySummaries]);
-
-  const handlePushNow = async () => {
-    if (!accountId) return;
-    setPushingNow(true);
-    setPushMessage(null);
-    try {
-      const data = await summaryApi.pushNow(accountId);
-
-      if (data.message) {
-        setPushMessage(data.message);
-      } else if (data.recipients && data.recipients.length > 0) {
-        setPushMessage(
-          `已產生 ${data.date} 的摘要（${data.facts_count} 筆紀錄），並寄送至 ${data.recipients.join('、')}`
-        );
-      } else if (data.email_enabled === false) {
-        setPushMessage(
-          `已產生 ${data.date} 的摘要（${data.facts_count} 筆紀錄）。Email 通知未啟用，僅有站內通知。`
-        );
-      } else {
-        setPushMessage(
-          `已產生 ${data.date} 的摘要（${data.facts_count} 筆紀錄），但沒有成功寄出信件，請查看後端 log。`
-        );
-      }
-
-      // 重新載入摘要清單，讓新產生的摘要立即顯示
-      await loadHealthData();
-      // 通知鈴鐺立刻重抓，不必等下一次 60 秒輪詢
-      window.dispatchEvent(new Event(SUMMARY_UPDATED_EVENT));
-    } catch (err: any) {
-      setPushMessage(err?.message || '推播失敗，請稍後再試');
-    } finally {
-      setPushingNow(false);
-    }
-  };
 
   const handleSaveSchedule = async () => {
     if (!accountId) return;
@@ -763,32 +727,6 @@ const CaregiverElderDetail: React.FC = () => {
                         方便確認設定是否生效。
                       </p>
 
-                      {/* 立即推播：不受「當天已有摘要」限制，方便展示與測試 */}
-                      <div className="mt-5 pt-5 border-t border-slate-200">
-                        <div className="flex flex-wrap items-center gap-3">
-                          <button
-                            onClick={handlePushNow}
-                            disabled={pushingNow}
-                            className="flex items-center gap-2 px-5 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white rounded-xl font-bold transition-all shadow-md"
-                          >
-                            {pushingNow ? (
-                              <Loader2 className="w-5 h-5 animate-spin" />
-                            ) : (
-                              <Send className="w-5 h-5" />
-                            )}
-                            {pushingNow ? '推播中...' : '立即推播（測試）'}
-                          </button>
-                          <span className="text-xs text-slate-400">
-                            不必等到設定時間，立刻產生今日摘要並寄出通知，可重複執行
-                          </span>
-                        </div>
-
-                        {pushMessage && (
-                          <p className="mt-3 text-sm font-semibold text-amber-700" role="status">
-                            {pushMessage}
-                          </p>
-                        )}
-                      </div>
                     </div>
                   )}
                 </div>
