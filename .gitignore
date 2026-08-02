@@ -41,3 +41,8 @@ ehthumbs.db
 # ===== 建置產物 =====
 frontend/dist/
 *.map
+
+# ===== 本機延遲測試 =====
+backend/scripts/benchmark_call1_latency.py
+backend/scripts/benchmark_call2_latency.py
+backend/scripts/benchmark_call1_models.py

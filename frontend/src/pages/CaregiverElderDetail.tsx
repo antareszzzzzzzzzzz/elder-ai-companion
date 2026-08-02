@@ -5,6 +5,9 @@ import { ArrowLeft, User, MessageSquare, BellRing, Trash2, Plus, Brain, Utensils
 import { motion, AnimatePresence } from 'framer-motion';
 import { healthApi, summaryApi, careItemsApi, followApi, type DailySummary, type HealthOverview, type CareItem } from '../services/api';
 
+// 保留暫時隱藏按鈕所需圖示，避免 TypeScript 將其視為未使用。
+void RefreshCw;
+
 /** 照護者端記憶足跡時間軸子組件 */
 interface CaregiverMemoryCard {
   id: string;
@@ -227,6 +230,7 @@ const CaregiverElderDetail: React.FC = () => {
   const [insights, setInsights] = useState<string | null>(null);
   const [loadingOverview, setLoadingOverview] = useState(true);
   const [generatingInsights, setGeneratingInsights] = useState(false);
+  void generatingInsights;
   const [generatingSummary, setGeneratingSummary] = useState(false);
 
   // Reminders — 串接後端 API
@@ -366,6 +370,7 @@ const CaregiverElderDetail: React.FC = () => {
       setGeneratingInsights(false);
     }
   };
+  void handleGenerateInsights;
 
   // 跨日洞察的觸發按鈕目前被註解停用，但 state 與 handler 保留以便日後恢復。
   // 這裡明確標記為「刻意未使用」，避免 tsc 的 noUnusedLocals 讓 build 失敗。
