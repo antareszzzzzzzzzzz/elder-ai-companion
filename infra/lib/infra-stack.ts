@@ -161,16 +161,7 @@ export class InfraStack extends cdk.Stack {
     const listener = alb.addListener('HttpListener', {
       port: 80,
       protocol: elbv2.ApplicationProtocol.HTTP,
-      open: false,
     });
-
-    // Only CloudFront origin-facing servers may connect directly to the ALB.
-    // The prefix list ID is AWS-managed for us-west-2.
-    alb.connections.allowFrom(
-      ec2.Peer.prefixList('pl-82a045eb'),
-      ec2.Port.tcp(80),
-      'Allow CloudFront origin-facing traffic only'
-    );
 
     const service = new ecs.FargateService(this, 'ElderAiService', {
       cluster,
@@ -232,43 +223,15 @@ export class InfraStack extends cdk.Stack {
       autoDeleteObjects: true,
     });
 
-    // CloudFront Function enforces the competition IP allowlist on every behavior.
-    // For frontend routes, it also preserves the existing SPA rewrite behavior.
+    // CloudFront Function for SPA routing (default behavior only)
+    // Rewrites GET/HEAD requests without file extensions to /index.html
     const spaRewriteFunction = new cloudfront.Function(this, 'SpaRewriteFunction', {
       functionName: 'elder-ai-spa-rewrite',
       code: cloudfront.FunctionCode.fromInline(`
 function handler(event) {
   var request = event.request;
-  var viewerIp = event.viewer && event.viewer.ip;
-  var allowedIps = {
-    '60.250.15.18': true,
-    '60.250.15.19': true,
-    '60.250.15.34': true,
-    '60.250.15.35': true,
-    '60.250.15.36': true,
-    '60.250.15.50': true,
-    '60.250.15.51': true,
-    '60.250.15.52': true
-  };
-
-  if (!viewerIp || !allowedIps[viewerIp]) {
-    return {
-      statusCode: 403,
-      statusDescription: 'Forbidden',
-      headers: {
-        'content-type': { value: 'text/plain; charset=utf-8' },
-        'cache-control': { value: 'no-store' }
-      }
-    };
-  }
-
   var uri = request.uri;
   var method = request.method;
-
-  // API and WebSocket paths only need the IP check, never SPA rewriting.
-  if (uri.indexOf('/api/') === 0 || uri.indexOf('/ws/') === 0) {
-    return request;
-  }
 
   // Only rewrite GET and HEAD requests
   if (method !== 'GET' && method !== 'HEAD') {
@@ -287,18 +250,16 @@ function handler(event) {
 `),
     });
 
-    const viewerRequestAssociation = [{
-      function: spaRewriteFunction,
-      eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
-    }];
-
     // CloudFront distribution
     const distribution = new cloudfront.Distribution(this, 'ElderAiCdn', {
       defaultBehavior: {
         origin: origins.S3BucketOrigin.withOriginAccessControl(frontendBucket),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
-        functionAssociations: viewerRequestAssociation,
+        functionAssociations: [{
+          function: spaRewriteFunction,
+          eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
+        }],
       },
       additionalBehaviors: {
         '/api/*': {
@@ -309,7 +270,6 @@ function handler(event) {
           allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
           cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
           originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER,
-          functionAssociations: viewerRequestAssociation,
         },
         '/ws/*': {
           origin: new origins.LoadBalancerV2Origin(alb, {
@@ -319,11 +279,9 @@ function handler(event) {
           allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
           cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
           originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER,
-          functionAssociations: viewerRequestAssociation,
         },
       },
       defaultRootObject: 'index.html',
-      enableIpv6: false,
     });
 
     // ========================================================
