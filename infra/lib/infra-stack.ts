@@ -114,7 +114,7 @@ export class InfraStack extends cdk.Stack {
       }),
       environment: {
         AWS_REGION: 'us-west-2',
-        BEDROCK_MODEL_ID: 'amazon.nova-lite-v1:0',
+        BEDROCK_MODEL_ID: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
         BEDROCK_REGION: 'us-west-2',
         DYNAMODB_REGION: 'us-west-2',
         COGNITO_USER_POOL_ID: userPoolId,
