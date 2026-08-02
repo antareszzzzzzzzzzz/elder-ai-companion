@@ -4,6 +4,7 @@ from datetime import datetime, timezone, timedelta
 from flask import Blueprint, request, jsonify, g
 from middleware.auth import require_auth
 from services.dynamodb import follows_table, accounts_table
+from services.scheduler import request_force_run
 from services.logger import follow_logger
 
 TW_TZ = timezone(timedelta(hours=8))
@@ -380,6 +381,10 @@ def set_summary_schedule():
             follow_logger.info(
                 f"[{g.user_id[:8]}] 設定對 {followee_id[:8]} 的每日摘要推播時間為 {new_time}"
             )
+            # 每次儲存時間都允許重新產生一次當天摘要，
+            # 讓「設定時間 → 等觸發」的流程可以重複驗證，
+            # 不需要手動刪除 DynamoDB 裡當天的摘要。
+            request_force_run(followee_id)
 
         return jsonify({
             "followee_id": followee_id,

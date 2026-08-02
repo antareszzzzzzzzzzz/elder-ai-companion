@@ -172,7 +172,21 @@ export const healthApi = {
 };
 
 /** 摘要相關 */
+export interface PushNowResult {
+  date: string;
+  summary_type?: string;
+  facts_count?: number;
+  /** 實際成功寄達的 email 清單 */
+  recipients?: string[];
+  email_enabled?: boolean;
+  /** 當天沒有紀錄可摘要時回傳說明訊息 */
+  message?: string;
+}
+
 export const summaryApi = {
+  /** 立即產生今日摘要並寄送通知（可重複觸發，供展示用） */
+  pushNow: (accountId: string) =>
+    api.post<PushNowResult>(`/api/summary/push-now/${accountId}`),
   generateDaily: (accountId: string) =>
     api.post<{ date: string; summary: string; summary_type: string; facts_count: number }>(`/api/summary/generate-daily/${accountId}`),
   generateWeekly: (accountId: string) =>
